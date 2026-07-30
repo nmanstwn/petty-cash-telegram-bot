@@ -4,20 +4,22 @@ import { generatePDFBuffer, ProjectReportData, Transaction } from "./pdfGenerato
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const APPS_SCRIPT_WEBHOOK_URL = process.env.APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbznCS67gVB2zDpVlCLJwIUELX9QAJJMQtv3sPnKqHrShuGjCmGwQv7-prn6Vw0JNss/exec";
-const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || "";
 
-if (!TELEGRAM_TOKEN || TELEGRAM_TOKEN.includes("YOUR_REAL")) {
+if (!TELEGRAM_TOKEN) {
   console.error("\n❌ ERROR: TELEGRAM_BOT_TOKEN belum diisi!");
   process.exit(1);
 }
 
-// Gunakan Webhook jika di Cloud (Render.com), jika lokal gunakan Polling
-const useWebhook = Boolean(RENDER_EXTERNAL_URL);
-const bot = useWebhook 
+// Render.com otomatis menyuplai process.env.RENDER = "true" & process.env.PORT
+const isCloud = Boolean(process.env.RENDER || process.env.PORT);
+const PORT = process.env.PORT || 3000;
+
+// Buat bot tanpa polling jika di cloud untuk mencegah 409 Conflict
+const bot = isCloud 
   ? new TelegramBot(TELEGRAM_TOKEN)
   : new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-console.log(`🚀 Starting Petty Cash Node.js Telegram Bot (Mode: ${useWebhook ? "Webhook Cloud" : "Polling Local"})...`);
+console.log(`🚀 Starting Petty Cash Node.js Bot (Mode: ${isCloud ? "Cloud Webhook" : "Local Polling"})...`);
 
 function getTodayFormatted(): string {
   const now = new Date();
@@ -130,8 +132,7 @@ bot.onText(/\/saldo/, async (msg) => {
   `, { parse_mode: "HTML" });
 });
 
-// Setup HTTP Server untuk Health Check Render & Webhook Receiver
-const PORT = process.env.PORT || 3000;
+// Setup HTTP Server untuk Health Check Render.com & Webhook Receiver
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === `/webhook/${TELEGRAM_TOKEN}`) {
     let body = "";
@@ -154,8 +155,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, async () => {
   console.log(`🌐 HTTP Server listening on port ${PORT}`);
-  if (useWebhook) {
-    const webhookUrl = `${RENDER_EXTERNAL_URL}/webhook/${TELEGRAM_TOKEN}`;
+  if (isCloud) {
+    const host = process.env.RENDER_EXTERNAL_URL || `https://petty-cash-telegram-bot.onrender.com`;
+    const webhookUrl = `${host}/webhook/${TELEGRAM_TOKEN}`;
     try {
       await bot.setWebHook(webhookUrl);
       console.log(`✅ Telegram Webhook set to: ${webhookUrl}`);
@@ -163,6 +165,6 @@ server.listen(PORT, async () => {
       console.error("❌ Failed to set Telegram Webhook:", err.message);
     }
   } else {
-    console.log("✅ Bot is online in polling mode!");
+    console.log("✅ Bot is online in local polling mode!");
   }
 });
