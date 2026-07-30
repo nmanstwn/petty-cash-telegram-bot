@@ -47,15 +47,31 @@ export function formatSaldoNumber(num: number): string {
 }
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
-  if (!url || !url.startsWith("http")) return null;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const arrayBuf = await res.arrayBuffer();
-    return Buffer.from(arrayBuf);
-  } catch {
-    return null;
+  if (!url) return null;
+
+  if (url.startsWith("data:image")) {
+    try {
+      const base64Data = url.split(",")[1];
+      if (base64Data) {
+        return Buffer.from(base64Data, "base64");
+      }
+    } catch {
+      return null;
+    }
   }
+
+  if (url.startsWith("http")) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const arrayBuf = await res.arrayBuffer();
+      return Buffer.from(arrayBuf);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.prototype): Promise<void> {

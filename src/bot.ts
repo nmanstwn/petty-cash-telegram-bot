@@ -10,11 +10,9 @@ if (!TELEGRAM_TOKEN) {
   process.exit(1);
 }
 
-// Render.com otomatis menyuplai process.env.RENDER = "true" & process.env.PORT
 const isCloud = Boolean(process.env.RENDER || process.env.PORT);
 const PORT = process.env.PORT || 3000;
 
-// Buat bot tanpa polling jika di cloud untuk mencegah 409 Conflict
 const bot = isCloud 
   ? new TelegramBot(TELEGRAM_TOKEN)
   : new TelegramBot(TELEGRAM_TOKEN, { polling: true });
@@ -51,28 +49,47 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
   const chatId = msg.chat.id;
 
   try {
-    let transactions: Transaction[] = [];
+    let transactions: Transaction[] = [
+      { date: "24 Jul 2026", description: "Kas Pek. Pulomas 1", type: "Debit", amount: 1600000 },
+      { date: "24 Jul 2026", description: "Pembayaran Kontrakan Tukang Pek. Pulomas", type: "Kredit", category: "Akomodasi", amount: 1600000 },
+      { date: "24 Jul 2026", description: "Kas Pek. Pulomas 1", type: "Debit", amount: 400000 },
+      { date: "24 Jul 2026", description: "Spidol", type: "Kredit", category: "ATK", amount: 10000 },
+      { date: "24 Jul 2026", description: "Nota 1", type: "Kredit", category: "Material", amount: 50000 },
+      { date: "24 Jul 2026", description: "Nota 2", type: "Kredit", category: "Material", amount: 75000 }
+    ];
     let projectName = "PERPUSTAKAAN LANTAI 10 - PULOMAS";
 
     try {
       const res = await fetch(`${APPS_SCRIPT_WEBHOOK_URL}?action=json_data&project=${encodeURIComponent(projectName)}`);
       if (res.ok) {
         const json: any = await res.json();
-        if (json && json.transactions) {
+        if (json && json.transactions && Array.isArray(json.transactions)) {
           transactions = json.transactions;
           if (json.projectName) projectName = json.projectName;
         }
       }
-    } catch {
-      transactions = [
-        { date: "24 Jul 2026", description: "Kas Pek. Pulomas 1", type: "Debit", amount: 1600000 },
-        { date: "24 Jul 2026", description: "Pembayaran Kontrakan Tukang Pek. Pulomas", type: "Kredit", category: "Akomodasi", amount: 1600000 },
-        { date: "24 Jul 2026", description: "Kas Pek. Pulomas 1", type: "Debit", amount: 400000 },
-        { date: "24 Jul 2026", description: "Spidol", type: "Kredit", category: "ATK", amount: 10000 },
-        { date: "24 Jul 2026", description: "Nota 1", type: "Kredit", category: "Material", amount: 50000 },
-        { date: "24 Jul 2026", description: "Nota 2", type: "Kredit", category: "Material", amount: 75000 }
-      ];
-    }
+    } catch {}
+
+    // Ambil foto nota dari HTML Report Apps Script jika ada
+    try {
+      const htmlRes = await fetch(`${APPS_SCRIPT_WEBHOOK_URL}?action=report&project=${encodeURIComponent(projectName)}`);
+      if (htmlRes.ok) {
+        const htmlText = await htmlRes.text();
+        const cleanHtml = htmlText.replace(/\\/g, '');
+        const base64Matches = [...cleanHtml.matchAll(/(data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+)/gi)];
+        const photoUrls = base64Matches.map(m => m[1]);
+
+        if (photoUrls.length > 0) {
+          let pIdx = 0;
+          transactions.forEach(t => {
+            if (t.type === "Kredit" && pIdx < photoUrls.length) {
+              t.photoUrl = photoUrls[pIdx];
+              pIdx++;
+            }
+          });
+        }
+      }
+    } catch {}
 
     let totalDebit = 0;
     let totalKredit = 0;
