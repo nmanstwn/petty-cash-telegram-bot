@@ -77,8 +77,11 @@ function extractPhotoUrlsFromHTML(rawHtml: string): string[] {
     .replace(/\\/g, '');
 
   const photos: string[] = [];
-  const base64Matches = [...unescaped.matchAll(/(data:image\/[a-zA-Z0-9]+;base64,[A-Za-z0-9+/=]+)/gi)];
-  base64Matches.forEach(m => photos.push(m[1]));
+  const base64Matches = [...unescaped.matchAll(/data:image\/[a-zA-Z0-9]+;base64,[A-Za-z0-9+/=\s]+/gi)];
+  base64Matches.forEach(m => {
+    const cleanMatch = m[0].replace(/\s+/g, '');
+    photos.push(cleanMatch);
+  });
   return photos;
 }
 

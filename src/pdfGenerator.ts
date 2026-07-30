@@ -64,9 +64,12 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
 
   if (url.startsWith("data:image")) {
     try {
-      const base64Data = url.split(",")[1];
-      if (base64Data) {
-        return Buffer.from(base64Data, "base64");
+      const parts = url.split(",");
+      if (parts.length >= 2) {
+        const base64Data = parts[1].replace(/\s+/g, "");
+        if (base64Data) {
+          return Buffer.from(base64Data, "base64");
+        }
       }
     } catch (e) {
       console.error("❌ Base64 decode error:", e);
