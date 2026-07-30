@@ -301,7 +301,8 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       const imgFrameW = cardW - 16;
       const imgFrameH = cardH - 42;
 
-      doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).fillAndStroke("#f8fafc", "#d1d5db");
+      // Draw light container border
+      doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).strokeColor("#cbd5e1").lineWidth(0.8).stroke();
 
       let imgBuf: Buffer | null = null;
       if (tx.photoPath && fs.existsSync(tx.photoPath)) {
@@ -312,12 +313,20 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
       if (imgBuf) {
         try {
-          doc.image(imgBuf, imgFrameX + 4, imgFrameY + 4, { fit: [imgFrameW - 8, imgFrameH - 8], align: "center", valig: "center" });
-        } catch {
+          doc.fillColor("#000000");
+          doc.image(imgBuf, imgFrameX + 2, imgFrameY + 2, {
+            fit: [imgFrameW - 4, imgFrameH - 4],
+            align: "center",
+            valign: "center"
+          });
+        } catch (imgErr) {
+          console.error("PDFKit doc.image error:", imgErr);
+          doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).fillAndStroke("#f8fafc", "#cbd5e1");
           doc.fillColor("#6b7280").font("Helvetica-Bold").fontSize(9);
           doc.text(`📷 FOTO BUKTI DOKUMENTASI NOTA / TRANSFER #${idx + 1}`, imgFrameX, imgFrameY + (imgFrameH / 2) - 5, { width: imgFrameW, align: "center" });
         }
       } else {
+        doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).fillAndStroke("#f8fafc", "#cbd5e1");
         doc.fillColor("#6b7280").font("Helvetica-Bold").fontSize(9);
         doc.text(`📷 FOTO BUKTI DOKUMENTASI NOTA / TRANSFER #${idx + 1}`, imgFrameX, imgFrameY + (imgFrameH / 2) - 5, { width: imgFrameW, align: "center" });
       }
