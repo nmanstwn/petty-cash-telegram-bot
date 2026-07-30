@@ -70,14 +70,24 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
       }
     } catch {}
 
+function extractPhotoUrlsFromHTML(rawHtml: string): string[] {
+  const unescaped = rawHtml
+    .replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\u([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\/g, '');
+
+  const photos: string[] = [];
+  const base64Matches = [...unescaped.matchAll(/(data:image\/[a-zA-Z0-9]+;base64,[A-Za-z0-9+/=]+)/gi)];
+  base64Matches.forEach(m => photos.push(m[1]));
+  return photos;
+}
+
     // Ambil foto nota dari HTML Report Apps Script jika ada
     try {
       const htmlRes = await fetch(`${APPS_SCRIPT_WEBHOOK_URL}?action=report&project=${encodeURIComponent(projectName)}`);
       if (htmlRes.ok) {
         const htmlText = await htmlRes.text();
-        const cleanHtml = htmlText.replace(/\\/g, '');
-        const base64Matches = [...cleanHtml.matchAll(/(data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+)/gi)];
-        const photoUrls = base64Matches.map(m => m[1]);
+        const photoUrls = extractPhotoUrlsFromHTML(htmlText);
 
         if (photoUrls.length > 0) {
           let pIdx = 0;
@@ -89,7 +99,9 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
           });
         }
       }
-    } catch {}
+    } catch (err) {
+      console.error("Error extracting HTML photos:", err);
+    }
 
     let totalDebit = 0;
     let totalKredit = 0;
