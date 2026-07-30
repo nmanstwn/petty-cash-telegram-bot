@@ -46,7 +46,19 @@ export function formatSaldoNumber(num: number): string {
   return num.toLocaleString("id-ID");
 }
 
-function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.prototype): void {
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  if (!url || !url.startsWith("http")) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const arrayBuf = await res.arrayBuffer();
+    return Buffer.from(arrayBuf);
+  } catch {
+    return null;
+  }
+}
+
+async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.prototype): Promise<void> {
   const startX = 20;
   const startY = 20;
   const totalWidth = 801.89; // Fits 841.89 width with 20pt margins
@@ -188,7 +200,7 @@ function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.proto
   doc.text("ASET HARTONO MULYA JAYA KONSTRUKSI", startX, currentY + 15, { width: totalWidth, align: "center" });
 
   // 4. PAGE 2: PHOTO ATTACHMENTS (4 PHOTOS PER ROW)
-  const txsWithPhoto = data.transactions.filter(t => t.photoPath || t.photoUrl);
+  const txsWithPhoto = data.transactions.filter(t => (t.photoUrl && String(t.photoUrl).startsWith("http")) || (t.photoPath && fs.existsSync(t.photoPath)));
   if (txsWithPhoto.length > 0) {
     doc.addPage({ margin: 20, size: "A4", layout: "landscape" });
 
@@ -202,7 +214,8 @@ function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.proto
     const cardW = 192; // 4 columns: (801.89 - 30) / 4 ≈ 192pt
     const cardH = 135;
 
-    txsWithPhoto.forEach((tx, idx) => {
+    for (let idx = 0; idx < txsWithPhoto.length; idx++) {
+      const tx = txsWithPhoto[idx];
       const cardX = startX + colIdx * (cardW + 10);
 
       doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(0.8).stroke();
@@ -214,19 +227,26 @@ function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.proto
 
       const imgFrameY = photoY + 36;
       const imgFrameH = cardH - 42;
-      
+
+      let imgBuf: Buffer | null = null;
       if (tx.photoPath && fs.existsSync(tx.photoPath)) {
+        try { imgBuf = fs.readFileSync(tx.photoPath); } catch {}
+      } else if (tx.photoUrl) {
+        imgBuf = await fetchImageBuffer(tx.photoUrl);
+      }
+
+      if (imgBuf) {
         try {
-          doc.image(tx.photoPath, cardX + 5, imgFrameY, { fit: [cardW - 10, imgFrameH], align: "center", valig: "center" });
+          doc.image(imgBuf, cardX + 5, imgFrameY, { fit: [cardW - 10, imgFrameH], align: "center", valig: "center" });
         } catch {
           doc.rect(cardX + 5, imgFrameY, cardW - 10, imgFrameH).fillAndStroke("#f8fafc", "#cbd5e1");
           doc.fillColor("#475569").font("Helvetica-Bold").fontSize(8);
-          doc.text(`📷 FOTO BUKTI #${idx + 1}`, cardX + 5, imgFrameY + 35, { width: cardW - 10, align: "center" });
+          doc.text(`📷 BUKTI FOTO #${idx + 1}`, cardX + 5, imgFrameY + 35, { width: cardW - 10, align: "center" });
         }
       } else {
         doc.rect(cardX + 5, imgFrameY, cardW - 10, imgFrameH).fillAndStroke("#f8fafc", "#cbd5e1");
         doc.fillColor("#475569").font("Helvetica-Bold").fontSize(8);
-        doc.text(`📷 FOTO BUKTI #${idx + 1}`, cardX + 5, imgFrameY + 35, { width: cardW - 10, align: "center" });
+        doc.text(`📷 BUKTI FOTO #${idx + 1}`, cardX + 5, imgFrameY + 35, { width: cardW - 10, align: "center" });
       }
 
       colIdx++;
@@ -238,7 +258,7 @@ function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.proto
           photoY = startY;
         }
       }
-    });
+    }
 
     // Footer Stamp on Page 2
     doc.moveTo(startX, 555).lineTo(startX + totalWidth, 555).lineWidth(1).stroke();
@@ -258,7 +278,7 @@ export function generatePDFBuffer(data: ProjectReportData): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(buffers)));
     doc.on("error", (err) => reject(err));
 
-    buildPDFDocument(data, doc);
+    buildPDFDocument(data, doc).catch(reject);
   });
 }
 
@@ -268,7 +288,7 @@ export function generatePDFReport(data: ProjectReportData, outputPath: string): 
     const stream = fs.createWriteStream(outputPath);
 
     doc.pipe(stream);
-    buildPDFDocument(data, doc);
+    buildPDFDocument(data, doc).catch(reject);
 
     stream.on("finish", () => resolve(outputPath));
     stream.on("error", (err) => reject(err));

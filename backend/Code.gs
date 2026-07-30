@@ -58,6 +58,20 @@ function doGet(e) {
   startDate.setDate(today.getDate() - (REKAP_DEFAULT_RANGE_DAYS - 1));
   const periodLabel = params.period || `${REKAP_DEFAULT_RANGE_DAYS} Hari Terakhir`;
 
+  if (action === "json_data" || action === "get_data") {
+    try {
+      const txs = getProjectTransactions(projName, startDate, today);
+      const jsonRes = JSON.stringify({
+        projectName: projName,
+        period: periodLabel,
+        transactions: txs
+      });
+      return ContentService.createTextOutput(jsonRes).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ error: err.message })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   if (action === "report" || action === "pdf" || params.project) {
     if (action === "pdf") {
       try {
