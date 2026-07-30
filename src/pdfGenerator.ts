@@ -215,34 +215,47 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
   doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333");
   doc.text("ASET HARTONO MULYA JAYA KONSTRUKSI", startX, currentY + 15, { width: totalWidth, align: "center" });
 
-  // 4. PAGE 2: PHOTO ATTACHMENTS (4 PHOTOS PER ROW)
-  const txsWithPhoto = data.transactions.filter(t => (t.photoUrl && String(t.photoUrl).startsWith("http")) || (t.photoPath && fs.existsSync(t.photoPath)));
+  // 4. PAGE 2: PHOTO ATTACHMENTS (2 CARDS PER ROW, 2 ROWS PER PAGE = 4 CARDS PER PAGE)
+  const txsWithPhoto = data.transactions.filter(t => Boolean(t.photoUrl) || (t.photoPath && fs.existsSync(t.photoPath)));
+
   if (txsWithPhoto.length > 0) {
     doc.addPage({ margin: 20, size: "A4", layout: "landscape" });
 
-    doc.rect(startX, startY, totalWidth, 35).strokeColor("#000000").lineWidth(1).stroke();
-    doc.fillColor("#000000").font("Helvetica-Bold").fontSize(11);
-    doc.text(`LAMPIRAN DOKUMENTASI FOTO BUKTI NOTA & TRANSFER`, startX, startY + 6, { width: totalWidth, align: "center" });
-    doc.fontSize(9).text(`[${data.projectName}]`, startX, startY + 20, { width: totalWidth, align: "center" });
+    // Header Title Box
+    const headerTitleH = 34;
+    doc.rect(startX, startY, totalWidth, headerTitleH).strokeColor("#000000").lineWidth(1).stroke();
+    doc.fillColor("#000000").font("Helvetica-Bold").fontSize(10.5);
+    doc.text("LAMPIRAN DOKUMENTASI FOTO BUKTI NOTA & TRANSFER (REKAP MINGGUAN)", startX, startY + 5, { width: totalWidth, align: "center" });
+    doc.fontSize(9.5).text(`[${data.projectName}]`, startX, startY + 18, { width: totalWidth, align: "center" });
 
-    let photoY = startY + 45;
+    let photoY = startY + headerTitleH + 12;
     let colIdx = 0;
-    const cardW = 192; // 4 columns: (801.89 - 30) / 4 ≈ 192pt
-    const cardH = 135;
+    const cardW = 393; // 2 columns: (801.89 - 15) / 2 = 393.44pt
+    const cardH = 230; // 2 rows fit within 540pt
 
     for (let idx = 0; idx < txsWithPhoto.length; idx++) {
       const tx = txsWithPhoto[idx];
-      const cardX = startX + colIdx * (cardW + 10);
+      const cardX = startX + colIdx * (cardW + 15.89);
 
-      doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(0.8).stroke();
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#000000");
-      doc.text(`Bukti #${idx + 1}: ${tx.date || ""}`, cardX + 4, photoY + 5, { width: cardW - 8, align: "center" });
-      doc.font("Helvetica").fontSize(7);
-      doc.text(toTitleCase(tx.description), cardX + 4, photoY + 15, { width: cardW - 8, align: "center" });
-      doc.text(`Rp ${formatAmountNumber(tx.amount)}`, cardX + 4, photoY + 25, { width: cardW - 8, align: "center" });
+      // Card Outer Frame
+      doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(0.9).stroke();
 
-      const imgFrameY = photoY + 36;
+      // Card Header Info (Line 1 & Line 2)
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
+      doc.text(`Bukti #${idx + 1}: ${tx.date || ""} - ${toTitleCase(tx.description)}`, cardX + 8, photoY + 7, { width: cardW - 16, align: "left", lineBreak: false });
+      
+      const cat = tx.category || "Lain-Lain";
+      const type = tx.type || "Kredit";
+      doc.font("Helvetica").fontSize(8).fillColor("#333333");
+      doc.text(`Nominal: Rp ${formatAmountNumber(tx.amount)} | Kategori: ${cat} | Tipe: ${type}`, cardX + 8, photoY + 20, { width: cardW - 16, align: "left", lineBreak: false });
+
+      // Inner Photo Container Box
+      const imgFrameX = cardX + 8;
+      const imgFrameY = photoY + 34;
+      const imgFrameW = cardW - 16;
       const imgFrameH = cardH - 42;
+
+      doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).fillAndStroke("#f8fafc", "#d1d5db");
 
       let imgBuf: Buffer | null = null;
       if (tx.photoPath && fs.existsSync(tx.photoPath)) {
@@ -253,23 +266,21 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
       if (imgBuf) {
         try {
-          doc.image(imgBuf, cardX + 5, imgFrameY, { fit: [cardW - 10, imgFrameH], align: "center", valig: "center" });
+          doc.image(imgBuf, imgFrameX + 4, imgFrameY + 4, { fit: [imgFrameW - 8, imgFrameH - 8], align: "center", valig: "center" });
         } catch {
-          doc.rect(cardX + 5, imgFrameY, cardW - 10, imgFrameH).fillAndStroke("#f8fafc", "#cbd5e1");
-          doc.fillColor("#475569").font("Helvetica-Bold").fontSize(8);
-          doc.text(`📷 BUKTI FOTO #${idx + 1}`, cardX + 5, imgFrameY + 35, { width: cardW - 10, align: "center" });
+          doc.fillColor("#6b7280").font("Helvetica-Bold").fontSize(9);
+          doc.text(`📷 FOTO BUKTI DOKUMENTASI NOTA / TRANSFER #${idx + 1}`, imgFrameX, imgFrameY + (imgFrameH / 2) - 5, { width: imgFrameW, align: "center" });
         }
       } else {
-        doc.rect(cardX + 5, imgFrameY, cardW - 10, imgFrameH).fillAndStroke("#f8fafc", "#cbd5e1");
-        doc.fillColor("#475569").font("Helvetica-Bold").fontSize(8);
-        doc.text(`📷 BUKTI FOTO #${idx + 1}`, cardX + 5, imgFrameY + 35, { width: cardW - 10, align: "center" });
+        doc.fillColor("#6b7280").font("Helvetica-Bold").fontSize(9);
+        doc.text(`📷 FOTO BUKTI DOKUMENTASI NOTA / TRANSFER #${idx + 1}`, imgFrameX, imgFrameY + (imgFrameH / 2) - 5, { width: imgFrameW, align: "center" });
       }
 
       colIdx++;
-      if (colIdx >= 4) {
+      if (colIdx >= 2) {
         colIdx = 0;
         photoY += cardH + 12;
-        if (photoY + cardH > 540) {
+        if (photoY + cardH > 550 && idx < txsWithPhoto.length - 1) {
           doc.addPage({ margin: 20, size: "A4", layout: "landscape" });
           photoY = startY;
         }
