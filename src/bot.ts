@@ -4,24 +4,20 @@ import { generatePDFBuffer, ProjectReportData, Transaction } from "./pdfGenerato
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const APPS_SCRIPT_WEBHOOK_URL = process.env.APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbznCS67gVB2zDpVlCLJwIUELX9QAJJMQtv3sPnKqHrShuGjCmGwQv7-prn6Vw0JNss/exec";
+const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || "";
 
 if (!TELEGRAM_TOKEN || TELEGRAM_TOKEN.includes("YOUR_REAL")) {
-  console.error("\n❌ ERROR: TELEGRAM_BOT_TOKEN belum diisi di file .env!");
+  console.error("\n❌ ERROR: TELEGRAM_BOT_TOKEN belum diisi!");
   process.exit(1);
 }
 
-// Buka Port HTTP untuk Health Check Render.com
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Petty Cash Telegram Bot is Active! 🚀\n");
-}).listen(PORT, () => {
-  console.log(`🌐 HTTP Health Server listening on port ${PORT}`);
-});
+// Gunakan Webhook jika di Cloud (Render.com), jika lokal gunakan Polling
+const useWebhook = Boolean(RENDER_EXTERNAL_URL);
+const bot = useWebhook 
+  ? new TelegramBot(TELEGRAM_TOKEN)
+  : new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-console.log("🚀 Starting Petty Cash Node.js Telegram Bot (Option 2 - PDFKit Fast Engine)...");
-
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+console.log(`🚀 Starting Petty Cash Node.js Telegram Bot (Mode: ${useWebhook ? "Webhook Cloud" : "Polling Local"})...`);
 
 function getTodayFormatted(): string {
   const now = new Date();
@@ -76,7 +72,6 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
       ];
     }
 
-    // Hitung ringkasan debit, kredit, saldo
     let totalDebit = 0;
     let totalKredit = 0;
     transactions.forEach(t => {
@@ -108,7 +103,6 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
     const safeProj = projectName.replace(/[^a-zA-Z0-9_-]/g, "_");
     const fileName = `Laporan_PettyCash_${safeProj}_${getTodayFormatted().replace(/\s+/g, "_")}.pdf`;
 
-    // Kirim Ringkasan Teks + File PDF Fisik Native ke Chat Telegram
     await bot.sendDocument(chatId, pdfBuffer, {
       caption: summaryCaption,
       parse_mode: "HTML"
@@ -136,4 +130,39 @@ bot.onText(/\/saldo/, async (msg) => {
   `, { parse_mode: "HTML" });
 });
 
-console.log("✅ Bot is online and listening for Telegram messages!");
+// Setup HTTP Server untuk Health Check Render & Webhook Receiver
+const PORT = process.env.PORT || 3000;
+const server = http.createServer((req, res) => {
+  if (req.method === "POST" && req.url === `/webhook/${TELEGRAM_TOKEN}`) {
+    let body = "";
+    req.on("data", chunk => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const update = JSON.parse(body);
+        bot.processUpdate(update);
+      } catch (e) {
+        console.error("Error processing update:", e);
+      }
+      res.writeHead(200);
+      res.end("OK");
+    });
+  } else {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("Petty Cash Telegram Bot is Active! 🚀\n");
+  }
+});
+
+server.listen(PORT, async () => {
+  console.log(`🌐 HTTP Server listening on port ${PORT}`);
+  if (useWebhook) {
+    const webhookUrl = `${RENDER_EXTERNAL_URL}/webhook/${TELEGRAM_TOKEN}`;
+    try {
+      await bot.setWebHook(webhookUrl);
+      console.log(`✅ Telegram Webhook set to: ${webhookUrl}`);
+    } catch (err: any) {
+      console.error("❌ Failed to set Telegram Webhook:", err.message);
+    }
+  } else {
+    console.log("✅ Bot is online in polling mode!");
+  }
+});
