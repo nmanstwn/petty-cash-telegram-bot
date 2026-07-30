@@ -46,6 +46,19 @@ export function formatSaldoNumber(num: number): string {
   return num.toLocaleString("id-ID");
 }
 
+function convertDriveUrlToDirect(url: string): string {
+  if (!url) return url;
+  const match1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (match1 && match1[1]) {
+    return `https://drive.google.com/uc?export=view&id=${match1[1]}`;
+  }
+  const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match2 && match2[1] && url.includes("drive.google.com")) {
+    return `https://drive.google.com/uc?export=view&id=${match2[1]}`;
+  }
+  return url;
+}
+
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   if (!url) return null;
 
@@ -55,18 +68,48 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
       if (base64Data) {
         return Buffer.from(base64Data, "base64");
       }
-    } catch {
+    } catch (e) {
+      console.error("❌ Base64 decode error:", e);
       return null;
     }
   }
 
-  if (url.startsWith("http")) {
+  const directUrl = convertDriveUrlToDirect(url);
+  console.log("🔍 Fetching photo URL:", directUrl);
+
+  if (directUrl.startsWith("http")) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(directUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
+      });
+      
+      const contentType = res.headers.get("content-type") || "";
+      console.log(`📥 Fetch status: ${res.status}, Content-Type: ${contentType}`);
+
       if (!res.ok) return null;
+
+      if (!contentType.toLowerCase().startsWith("image/") && !contentType.includes("octet-stream")) {
+        console.warn(`⚠️ Warning: URL returned non-image content-type: ${contentType}`);
+        const driveIdMatch = directUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (driveIdMatch && driveIdMatch[1]) {
+          const altUrl = `https://lh3.googleusercontent.com/d/${driveIdMatch[1]}`;
+          console.log(`🔄 Retrying with alt Google Drive URL: ${altUrl}`);
+          const altRes = await fetch(altUrl);
+          const altType = altRes.headers.get("content-type") || "";
+          if (altRes.ok && (altType.toLowerCase().startsWith("image/") || altType.includes("octet-stream"))) {
+            const arrayBuf = await altRes.arrayBuffer();
+            return Buffer.from(arrayBuf);
+          }
+        }
+        return null;
+      }
+
       const arrayBuf = await res.arrayBuffer();
       return Buffer.from(arrayBuf);
-    } catch {
+    } catch (err: any) {
+      console.error("❌ Fetch image error:", err.message);
       return null;
     }
   }
