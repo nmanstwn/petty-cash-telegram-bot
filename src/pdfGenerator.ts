@@ -311,7 +311,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
         imgBuf = await fetchImageBuffer(tx.photoUrl);
       }
 
-      if (imgBuf) {
+      if (imgBuf && imgBuf.length > 1000) {
         try {
           doc.fillColor("#000000");
           doc.image(imgBuf, imgFrameX + 2, imgFrameY + 2, {
@@ -328,7 +328,9 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       } else {
         doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).fillAndStroke("#f8fafc", "#cbd5e1");
         doc.fillColor("#6b7280").font("Helvetica-Bold").fontSize(9);
-        doc.text(`📷 FOTO BUKTI DOKUMENTASI NOTA / TRANSFER #${idx + 1}`, imgFrameX, imgFrameY + (imgFrameH / 2) - 5, { width: imgFrameW, align: "center" });
+        doc.text(`📷 FOTO BUKTI DOKUMENTASI NOTA / TRANSFER #${idx + 1}`, imgFrameX, imgFrameY + (imgFrameH / 2) - 12, { width: imgFrameW, align: "center" });
+        doc.font("Helvetica").fontSize(7.5).fillColor("#94a3b8");
+        doc.text("(Kirim foto nota fisik di Telegram saat input transaksi untuk menampilkan foto di sini)", imgFrameX, imgFrameY + (imgFrameH / 2) + 4, { width: imgFrameW, align: "center" });
       }
 
       colIdx++;
