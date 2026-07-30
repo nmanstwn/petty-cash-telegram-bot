@@ -1,4 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
+import http from "http";
 import { generatePDFBuffer, ProjectReportData, Transaction } from "./pdfGenerator";
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
@@ -8,6 +9,15 @@ if (!TELEGRAM_TOKEN || TELEGRAM_TOKEN.includes("YOUR_REAL")) {
   console.error("\n❌ ERROR: TELEGRAM_BOT_TOKEN belum diisi di file .env!");
   process.exit(1);
 }
+
+// Buka Port HTTP untuk Health Check Render.com
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Petty Cash Telegram Bot is Active! 🚀\n");
+}).listen(PORT, () => {
+  console.log(`🌐 HTTP Health Server listening on port ${PORT}`);
+});
 
 console.log("🚀 Starting Petty Cash Node.js Telegram Bot (Option 2 - PDFKit Fast Engine)...");
 
