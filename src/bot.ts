@@ -153,11 +153,13 @@ const server = http.createServer((req, res) => {
   }
 });
 
+const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL
+  || (process.env.RENDER_EXTERNAL_HOSTNAME ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` : "https://petty-cash-telegram-bot.onrender.com");
+
 server.listen(PORT, async () => {
   console.log(`🌐 HTTP Server listening on port ${PORT}`);
   if (isCloud) {
-    const host = process.env.RENDER_EXTERNAL_URL || `https://petty-cash-telegram-bot.onrender.com`;
-    const webhookUrl = `${host}/webhook/${TELEGRAM_TOKEN}`;
+    const webhookUrl = `${RENDER_EXTERNAL_URL}/webhook/${TELEGRAM_TOKEN}`;
     try {
       await bot.setWebHook(webhookUrl);
       console.log(`✅ Telegram Webhook set to: ${webhookUrl}`);
