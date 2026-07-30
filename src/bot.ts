@@ -1,13 +1,11 @@
 import TelegramBot from "node-telegram-bot-api";
 import { generatePDFBuffer, ProjectReportData, Transaction } from "./pdfGenerator";
 
-// Bun / Node env loader
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const APPS_SCRIPT_WEBHOOK_URL = process.env.APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbznCS67gVB2zDpVlCLJwIUELX9QAJJMQtv3sPnKqHrShuGjCmGwQv7-prn6Vw0JNss/exec";
 
 if (!TELEGRAM_TOKEN || TELEGRAM_TOKEN.includes("YOUR_REAL")) {
   console.error("\n❌ ERROR: TELEGRAM_BOT_TOKEN belum diisi di file .env!");
-  console.error("👉 Silakan buka file .env dan isi token bot Telegram Anda dari @BotFather.\n");
   process.exit(1);
 }
 
@@ -33,13 +31,8 @@ Ketik pesan transaksi atau kirim foto nota langsung:
 • <code>10rb spidol</code>
 
 📊 <b>COMMAND KELOLA PROYEK & LAPORAN:</b>
-• <code>/rekap</code> atau <code>/laporan</code> : Dapatkan File PDF Laporan Resmi Instant (A4 Landscape Native)
+• <code>/rekap</code> atau <code>/laporan</code> : Dapatkan Rincian Ringkasan & File PDF Laporan Resmi Instant
 • <code>/saldo</code> : Cek Rincian Saldo & Histori Proyek Aktif
-
-✅ <b>Keunggulan Engine Node.js Option 2:</b>
-• PDF Vektor Native Kilat (0.05 Detik)
-• 100% Bebas dari Teks URL Google Script
-• A4 Landscape Rapi & Galeri Foto 4-Per-Baris!
   `;
 
   bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });
@@ -48,14 +41,13 @@ Ketik pesan transaksi atau kirim foto nota langsung:
 // 2. Command /rekap atau /laporan
 bot.onText(/\/(rekap|laporan)/, async (msg) => {
   const chatId = msg.chat.id;
-  const loadingMsg = await bot.sendMessage(chatId, "📊 <i>Sedang menyusun Laporan PDF Petty Cash (PDFKit Native)... Mohon tunggu 1 detik.</i>", { parse_mode: "HTML" });
 
   try {
     let transactions: Transaction[] = [];
     let projectName = "PERPUSTAKAAN LANTAI 10 - PULOMAS";
 
     try {
-      const res = await fetch(`${APPS_SCRIPT_WEBHOOK_URL}?action=get_data&project=${encodeURIComponent(projectName)}`);
+      const res = await fetch(`${APPS_SCRIPT_WEBHOOK_URL}?action=json_data&project=${encodeURIComponent(projectName)}`);
       if (res.ok) {
         const json: any = await res.json();
         if (json && json.transactions) {
@@ -74,6 +66,28 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
       ];
     }
 
+    // Hitung ringkasan debit, kredit, saldo
+    let totalDebit = 0;
+    let totalKredit = 0;
+    transactions.forEach(t => {
+      if (t.type === "Debit") totalDebit += t.amount;
+      else totalKredit += t.amount;
+    });
+    const saldoTerkini = totalDebit - totalKredit;
+
+    const summaryCaption = `
+📊 <b>LAPORAN KEUANGAN PETTY CASH</b>
+━━━━━━━━━━━━━━━━━━━━━━
+🏗️ <b>Proyek:</b> ${projectName}
+📅 <b>Periode:</b> 7 Hari Terakhir
+
+💵 <b>Total Top-Up:</b> Rp ${totalDebit.toLocaleString("id-ID")}
+💸 <b>Total Pengeluaran:</b> Rp ${totalKredit.toLocaleString("id-ID")}
+💰 <b>Saldo Terkini Proyek:</b> Rp ${saldoTerkini.toLocaleString("id-ID")}
+━━━━━━━━━━━━━━━━━━━━━━
+📄 <i>File Laporan PDF Resmi (A4 Landscape) Terlampir:</i>
+    `.trim();
+
     const reportData: ProjectReportData = {
       projectName: projectName,
       year: "7 HARI TERAKHIR",
@@ -84,10 +98,9 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
     const safeProj = projectName.replace(/[^a-zA-Z0-9_-]/g, "_");
     const fileName = `Laporan_PettyCash_${safeProj}_${getTodayFormatted().replace(/\s+/g, "_")}.pdf`;
 
-    await bot.deleteMessage(chatId, loadingMsg.message_id);
-
+    // Kirim Ringkasan Teks + File PDF Fisik Native ke Chat Telegram
     await bot.sendDocument(chatId, pdfBuffer, {
-      caption: `✅ <b>Laporan Petty Cash Berhasil Dibuat (PDFKit Engine)</b>\n📌 Proyek: <b>${projectName}</b>\n📄 Nama File: <code>${fileName}</code>`,
+      caption: summaryCaption,
       parse_mode: "HTML"
     }, {
       filename: fileName,
