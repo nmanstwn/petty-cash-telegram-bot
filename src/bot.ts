@@ -228,44 +228,49 @@ async function sendPettyCashReport(chatId: number, telegramId: number, role: str
   }
 }
 
-// 3. Command /saldo
-bot.onText(/\/saldo/, async (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, `
-💰 <b>INFORMASI SALDO PROYEK</b>
-📌 Proyek: <b>PERPUSTAKAAN LANTAI 10 - PULOMAS</b>
-──────────────────────────────
-📥 Total Top-Up (Debit): Rp 2.000.000
-📤 Total Pengeluaran (Kredit): Rp 1.735.000
-💵 <b>Saldo Terkini: Rp 265.000</b>
-  `, { parse_mode: "HTML" });
-});
-
-// 4. Command /proyek atau /project
-bot.onText(/\/(proyek|project)/, async (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, `
-🏗️ <b>INFORMASI PROYEK AKTIF</b>
-──────────────────────────────
-📌 Nama Proyek: <b>PERPUSTAKAAN LANTAI 10 - PULOMAS</b>
-📊 Status: <b>Aktif</b>
-💡 Ketik <code>/saldo</code> untuk cek saldo terkini.
-💡 Ketik <code>/rekap</code> untuk download laporan PDF resmi.
-  `, { parse_mode: "HTML" });
-});
+// Command yang DITANGANI LANGSUNG oleh bot.ts (butuh pdfkit / Node.js)
+// Selain pola ini, semua update diteruskan mentah-mentah ke Kode.gs.
+const OWNED_BY_NODE = /^\/(start|help|rekapgabungan|rekap|laporan)(@\w+)?(\s|$)/;
 
 // Setup HTTP Server untuk Health Check Render.com & Webhook Receiver
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === `/webhook/${TELEGRAM_TOKEN}`) {
     let body = "";
     req.on("data", chunk => { body += chunk; });
-    req.on("end", () => {
+    req.on("end", async () => {
+      let update: any = null;
       try {
-        const update = JSON.parse(body);
-        bot.processUpdate(update);
+        update = JSON.parse(body);
       } catch (e) {
-        console.error("Error processing update:", e);
+        console.error("❌ Error parsing update:", e);
+        res.writeHead(200);
+        res.end("OK");
+        return;
       }
+
+      const text = (update?.message?.text || "").trim();
+      const isOwnedByNode = OWNED_BY_NODE.test(text);
+
+      if (isOwnedByNode) {
+        // /start /help /rekap /laporan /rekapgabungan -> ditangani di sini (butuh pdfkit)
+        bot.processUpdate(update);
+      } else {
+        // Semua yang lain: foto nota, teks transaksi bebas, /catat, /topup, /proyek,
+        // /saldo, /riwayat, /tambahproyek, /aturrole, /listuser, dan SEMUA tombol
+        // inline (callback_query: konfirmasi/edit/batal/approve/reject/pilih kategori/proyek)
+        // -> diteruskan ke Kode.gs yang sudah lengkap menangani ini & membalas user langsung.
+        try {
+          const fwdRes = await fetch(APPS_SCRIPT_WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(update)
+          });
+          console.log("↪️ Forwarded to Apps Script, status:", fwdRes.status);
+        } catch (err) {
+          console.error("❌ Gagal forward update ke Apps Script:", err);
+        }
+      }
+
       res.writeHead(200);
       res.end("OK");
     });
