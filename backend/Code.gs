@@ -799,8 +799,7 @@ function cmdRiwayat(chatId, userId) {
 
 // /tambahproyek (Khusus Admin)
 function cmdTambahProyek(chatId, userId, args) {
-  const adminId = getProperty("ADMIN_TELEGRAM_ID");
-  if (String(userId) !== String(adminId)) {
+  if (getUserRole(userId) !== ROLE_ADMIN) {
     sendMessage(chatId, "⚠️ *Akses Ditolak.* Hanya Admin yang dapat menambahkan/membuat proyek baru.");
     return;
   }
@@ -831,8 +830,7 @@ function cmdProyek(chatId, userId, args) {
   if (args.length > 0) {
     const targetProj = args.join(" ").trim();
     if (!projects.includes(targetProj)) {
-      const adminId = getProperty("ADMIN_TELEGRAM_ID");
-      if (String(userId) === String(adminId)) {
+      if (getUserRole(userId) === ROLE_ADMIN) {
         setupSheets();
         const sheetProj = getDbSpreadsheet().getSheetByName("Projects");
         sheetProj.appendRow([targetProj, 0, 500000, "Active"]);
@@ -885,8 +883,7 @@ function cmdTopUp(chatId, userId, args) {
 
   const projects = getAllProjects();
   if (!projects.includes(projectName)) {
-    const adminId = getProperty("ADMIN_TELEGRAM_ID");
-    if (String(userId) === String(adminId)) {
+    if (getUserRole(userId) === ROLE_ADMIN) {
       setupSheets();
       const sheetProj = getDbSpreadsheet().getSheetByName("Projects");
       sheetProj.appendRow([projectName, 0, 500000, "Active"]);
@@ -1504,21 +1501,39 @@ function getUserNameById(userId) {
 }
 
 function getUserRole(userId) {
+  setupSheets();
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+
+  // Langkah 1: cari di sheet Users terlebih dahulu
+  if (sheet) {
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(userId)) {
+        return data[i][3] || null;
+      }
+    }
+  }
+
+  // Langkah 2: tidak ditemukan — cek apakah ini ADMIN_TELEGRAM_ID (bootstrap admin)
   const adminId = getProperty("ADMIN_TELEGRAM_ID");
   if (adminId && String(userId) === String(adminId)) {
+    // Bootstrap: buat entri admin pertama otomatis di sheet Users
+    if (sheet) {
+      const firstProject = getAllProjects();
+      sheet.appendRow([
+        String(userId),
+        "Admin",
+        firstProject.length > 0 ? firstProject[0] : "",
+        ROLE_ADMIN,
+        "Active"
+      ]);
+      Logger.log("Bootstrap admin created for Telegram ID: " + userId);
+    }
     return ROLE_ADMIN;
   }
 
-  const sheet = getDbSpreadsheet().getSheetByName("Users");
-  if (!sheet) return null;
-
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(userId)) {
-      return data[i][3] || null;
-    }
-  }
-  return null; // User tidak terdaftar sama sekali
+  // Langkah 3: bukan siapa-siapa
+  return null;
 }
 
 function getProjectTopUps(projectName, startDate = null, endDate = null) {
@@ -1779,8 +1794,22 @@ function answerCallbackQuery(callbackQueryId, text) {
 }
 
 function notifyAdminForApproval(tx) {
-  const adminId = getProperty("ADMIN_TELEGRAM_ID");
-  if (!adminId) return;
+  // Kirim notifikasi ke semua user yang memiliki role Admin di sheet Users
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  if (!sheet) return;
+  const data = sheet.getDataRange().getValues();
+  const adminIds = [];
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][3]) === ROLE_ADMIN && data[i][0]) {
+      adminIds.push(String(data[i][0]));
+    }
+  }
+  // Fallback ke ADMIN_TELEGRAM_ID Script Property jika belum ada admin di sheet
+  if (adminIds.length === 0) {
+    const fallbackId = getProperty("ADMIN_TELEGRAM_ID");
+    if (fallbackId) adminIds.push(fallbackId);
+  }
+  if (adminIds.length === 0) return;
 
   const msg = `🚨 *NOTIFIKASI APPROVAL TRANSAKSI BARU*\n` +
     `━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -1803,7 +1832,7 @@ function notifyAdminForApproval(tx) {
     ]
   };
 
-  sendMessageWithKeyboard(adminId, msg, keyboard);
+  adminIds.forEach(adminId => sendMessageWithKeyboard(adminId, msg, keyboard));
 }
 
 function sendDocument(chatId, blob, fileName, caption) {
