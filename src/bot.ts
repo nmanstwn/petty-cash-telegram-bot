@@ -48,6 +48,7 @@ Ketik pesan transaksi atau kirim foto nota langsung:
 📊 <b>COMMAND KELOLA PROYEK & LAPORAN:</b>
 • <code>/rekap</code> atau <code>/laporan</code> : Dapatkan Rincian Ringkasan & File PDF Laporan Resmi Instant
 • <code>/saldo</code> : Cek Rincian Saldo & Histori Proyek Aktif
+• <code>/proyek</code> : Cek Informasi Proyek Aktif Saat Ini
   `;
 
   bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });
@@ -159,6 +160,19 @@ bot.onText(/\/saldo/, async (msg) => {
 📥 Total Top-Up (Debit): Rp 2.000.000
 📤 Total Pengeluaran (Kredit): Rp 1.735.000
 💵 <b>Saldo Terkini: Rp 265.000</b>
+  `, { parse_mode: "HTML" });
+});
+
+// 4. Command /proyek atau /project
+bot.onText(/\/(proyek|project)/, async (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, `
+🏗️ <b>INFORMASI PROYEK AKTIF</b>
+──────────────────────────────
+📌 Nama Proyek: <b>PERPUSTAKAAN LANTAI 10 - PULOMAS</b>
+📊 Status: <b>Aktif</b>
+💡 Ketik <code>/saldo</code> untuk cek saldo terkini.
+💡 Ketik <code>/rekap</code> untuk download laporan PDF resmi.
   `, { parse_mode: "HTML" });
 });
 
