@@ -251,7 +251,12 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
         doc.text(formatDateOnly(tx.date), cols.tanggal.x + 2, textPaddingY, { width: cols.tanggal.w - 4, align: "center" });
       }
 
-      doc.text(toTitleCase(tx.description), cols.deskripsi.x + 4, textPaddingY, { width: cols.deskripsi.w - 8, align: "center", lineBreak: false });
+      // Deskripsi: rata kiri, vertical-center di dalam tinggi baris
+      const descText = toTitleCase(tx.description);
+      const descWidth = cols.deskripsi.w - 8;
+      const descActualHeight = doc.heightOfString(descText, { width: descWidth });
+      const descY = rowTop + (calcRowHeight - descActualHeight) / 2;
+      doc.text(descText, cols.deskripsi.x + 4, descY, { width: descWidth, align: "left" });
 
       if (tx.type === "Debit") {
         runningBalance += tx.amount;
@@ -269,7 +274,11 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       doc.text(formatSaldoNumber(runningBalance), cols.saldo.x + 2, textPaddingY, { width: cols.saldo.w - 4, align: "right" });
 
       if (tx.note) {
-        doc.text(tx.note, cols.keterangan.x + 4, textPaddingY, { width: cols.keterangan.w - 8, align: "center", lineBreak: false });
+        // Keterangan: rata kiri, vertical-center di dalam tinggi baris
+        const noteWidth = cols.keterangan.w - 8;
+        const noteActualHeight = doc.heightOfString(tx.note, { width: noteWidth });
+        const noteY = rowTop + (calcRowHeight - noteActualHeight) / 2;
+        doc.text(tx.note, cols.keterangan.x + 4, noteY, { width: noteWidth, align: "left" });
       }
     }
 

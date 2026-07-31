@@ -24,6 +24,15 @@ function getTodayFormatted(): string {
   return now.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function getMonthYearLabel(): string {
+  const months = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+  const now = new Date();
+  return `${months[now.getMonth()]} ${now.getFullYear()}`;
+}
+
 // 1. Command /start & /help
 bot.onText(/\/(start|help)/, (msg) => {
   const chatId = msg.chat.id;
@@ -107,7 +116,7 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
 📊 <b>LAPORAN KEUANGAN PETTY CASH</b>
 ━━━━━━━━━━━━━━━━━━━━━━
 🏗️ <b>Proyek:</b> ${projectName}
-📅 <b>Periode:</b> ${periodLabel}
+📅 <b>Periode:</b> ${getMonthYearLabel()}
 
 💵 <b>Total Top-Up:</b> Rp ${totalDebit.toLocaleString("id-ID")}
 💸 <b>Total Pengeluaran:</b> Rp ${totalKredit.toLocaleString("id-ID")}
@@ -118,7 +127,7 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
 
     const reportData: ProjectReportData = {
       projectName: projectName,
-      year: periodLabel,
+      year: getMonthYearLabel(),
       transactions: transactions
     };
 
