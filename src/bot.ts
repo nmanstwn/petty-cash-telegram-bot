@@ -70,7 +70,7 @@ function sortTransactionsByDate(txs: Transaction[]): Transaction[] {
 bot.onText(/\/(start|help)/, (msg) => {
   const chatId = msg.chat.id;
   const helpText = `
-🤖 <b>SISTEM PETTY CASH HMJ (NODE.JS + PDFKIT FAST ENGINE)</b>
+🤖 <b>SISTEM PETTY CASH AUTOMATION</b>
 ──────────────────────────────
 📌 <b>FORMAT PENCATATAN TRANSAKSI:</b>
 Ketik pesan transaksi atau kirim foto nota langsung:
@@ -78,11 +78,27 @@ Ketik pesan transaksi atau kirim foto nota langsung:
 • <code>400rb kas pek. pulomas 1</code>
 • <code>10rb spidol</code>
 
-📊 <b>COMMAND KELOLA PROYEK & LAPORAN:</b>
-• <code>/rekap</code> atau <code>/laporan</code> : Laporan PDF Petty Cash
-• <code>/rekapgabungan</code> : Laporan PDF Gabungan (Petty Cash + Kas Proyek) — khusus Manajer/Admin
-• <code>/saldo</code> : Cek Rincian Saldo & Histori Proyek Aktif
-• <code>/proyek</code> : Cek Informasi Proyek Aktif Saat Ini
+📊 <b>DAFTAR COMMAND:</b>
+
+👤 <b>Semua User:</b>
+• <code>/saldo</code> — Cek Saldo Terkini Proyek Aktif
+• <code>/proyek</code> — Ganti / Pilih Proyek Aktif
+• <code>/riwayat</code> — Lihat 10 Transaksi Terakhir
+• <code>/rekap</code> atau <code>/laporan</code> — Laporan PDF Petty Cash
+
+👔 <b>Khusus Manajer & Admin:</b>
+• <code>/rekapgabungan</code> — Laporan Gabungan (Petty Cash + Kas Proyek)
+• <code>/topup [Proyek] [Nominal]</code> — Tambah Top-Up Saldo Kas
+
+🔑 <b>Khusus Admin:</b>
+• <code>/tambahproyek [Nama Proyek]</code> — Buat Proyek Baru
+• <code>/aturrole [telegram_id] [pengawas|manajer]</code> — Atur Role User
+• <code>/listuser</code> — Tampilkan Semua User & Role
+
+🏷️ <b>INFO ROLE:</b>
+• <b>Pengawas</b> — Catat & lihat transaksi, cek saldo
+• <b>Manajer Proyek</b> — + Laporan gabungan & top-up
+• <b>Admin</b> — Akses penuh, kelola user & proyek
   `;
 
   bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });

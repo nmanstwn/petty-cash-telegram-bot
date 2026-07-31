@@ -222,31 +222,46 @@ function handleMessage(message) {
 }
 
 function sendHelpMessage(chatId, userName) {
-  const text = `📋 *PANDUAN LENGKAP BOT PETTY CASH AUTOMATION*\n` +
-    `Halo *${userName}*! Berikut adalah panduan penggunaan bot:\n\n` +
-    `⚡ *2 CARA MENCATAT TRANSAKSI KAS KECIL (INSTAN & SUPER KILAT):*\n\n` +
+  const role = getUserRole(chatId); // cek role pengirim untuk tampilkan seksi admin jika perlu
+  
+  const text = `📋 *PANDUAN BOT PETTY CASH AUTOMATION*\n` +
+    `Halo *${userName}*! Berikut panduan penggunaan bot:\n\n` +
+
+    `⚡ *2 CARA MENCATAT TRANSAKSI:*\n\n` +
     `1️⃣ *Kirim Foto (Nota / Bukti Transfer)*\n` +
     `   Sertakan caption angka & keterangan. Contoh:\n` +
     `   • \`1.6 bayar kontrakan tukang\` (Pengeluaran)\n` +
     `   • \`24jul 400rb kas pek. pulomas 1\` (Uang Masuk)\n\n` +
     `2️⃣ *Ketik Teks Langsung (Tanpa Foto)*\n` +
-    `   Ketik nominal & keterangan langsung. Contoh:\n` +
     `   • \`1.6 bayar kontrakan tukang pek. pulomas\`\n` +
     `   • \`150rb beli semen 3 sak\`\n` +
     `   • \`400rb kas main\`\n\n` +
+
     `✨ *FITUR PINTAR OTOMATIS:*\n` +
-    `• 💰 *Format Angka Bebas*: \`1.6\`/\`2.1\` (Juta), \`400rb\`, \`50k\`, \`250ribu\`\n` +
-    `• 📥 *Default Uang Masuk*: Jika tanpa kata \`bayar\`/\`beli\`/\`sewa\`, otomatis dibaca **Uang Masuk**!\n` +
-    `• 📅 *Tanggal Historis*: Tulis \`24jul\`, \`24/07/2026\`, \`24 Jul 2026\` di teks/caption.\n` +
-    `• 🔠 *Title Case*: Keterangan otomatis berhuruf kapital di awal kata.\n` +
-    `• ⚡ *Tanpa Approval*: Transaksi langsung tercetak & terdaftar instan!\n\n` +
-    `📌 *DAFTAR PERINTAH BOT (/COMMANDS):*\n` +
-    `• /saldo - Cek Saldo Terkini Proyek Aktif\n` +
-    `• /rekap - Download Laporan PDF Kas Kecil A4 Landscape + Galeri Bukti Nota\n` +
-    `• /proyek - Ganti / Pilih Proyek Aktif\n` +
-    `• /riwayat - Lihat 10 Transaksi Terakhir\n` +
-    `• /topup [Proyek] [Nominal] - Tambah Top-Up Saldo Kas\n` +
-    `• /tambahproyek [Nama Proyek] - Buat Proyek Baru (Khusus Admin)`;
+    `• 💰 *Format Angka*: \`1.6\`/\`2.1\` (Juta), \`400rb\`, \`50k\`, \`250ribu\`\n` +
+    `• 📥 *Default Uang Masuk*: Tanpa kata \`bayar\`/\`beli\`/\`sewa\` → otomatis Uang Masuk\n` +
+    `• 📅 *Tanggal Historis*: Tulis \`24jul\`, \`24/07/2026\` di teks/caption\n` +
+    `• ⚡ *Tanpa Approval*: Transaksi langsung terdaftar instan!\n\n` +
+
+    `📌 *DAFTAR PERINTAH (/COMMANDS):*\n` +
+    `👤 *Semua User:*\n` +
+    `• /saldo — Cek Saldo Terkini Proyek Aktif\n` +
+    `• /proyek — Ganti / Pilih Proyek Aktif\n` +
+    `• /riwayat — Lihat 10 Transaksi Terakhir\n` +
+    `• /rekap — Download Laporan PDF Petty Cash\n` +
+    `• /laporan — Sama dengan /rekap\n\n` +
+    `👔 *Khusus Manajer & Admin:*\n` +
+    `• /rekapgabungan — Laporan Gabungan (Petty Cash + Kas Proyek)\n` +
+    `• /topup [Proyek] [Nominal] — Tambah Top-Up Saldo Kas\n\n` +
+    `🔑 *Khusus Admin:*\n` +
+    `• /tambahproyek [Nama Proyek] — Buat Proyek Baru\n` +
+    `• /aturrole [telegram_id] [pengawas|manajer] — Atur Role Pengguna\n` +
+    `• /listuser — Tampilkan Semua Pengguna & Role\n\n` +
+
+    `🏷️ *INFO ROLE:*\n` +
+    `• *Pengawas* — Catat & lihat transaksi, cek saldo\n` +
+    `• *Manajer Proyek* — + Laporan gabungan & top-up\n` +
+    `• *Admin* — Akses penuh, kelola user & proyek`;
     
   sendMessage(chatId, text);
 }
