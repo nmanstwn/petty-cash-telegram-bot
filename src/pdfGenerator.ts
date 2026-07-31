@@ -100,7 +100,7 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
       });
-      
+
       const contentType = res.headers.get("content-type") || "";
       console.log(`📥 Fetch status: ${res.status}, Content-Type: ${contentType}`);
 
@@ -138,9 +138,13 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
   const startY = 20;
   const totalWidth = 801.89; // Fits 841.89 width with 20pt margins
 
+  // Standar ketebalan garis: 2 tingkat konsisten di seluruh dokumen
+  const OUTER_LINE = 0.75; // border utama/luar (title box, outer frame tabel, footer, card foto)
+  const INNER_LINE = 0.4;  // grid dalam (garis antar baris, garis vertikal antar kolom)
+
   // 1. TITLE BOX HEADER
   const titleHeight = 36;
-  doc.rect(startX, startY, totalWidth, titleHeight).strokeColor("#000000").lineWidth(0.8).stroke();
+  doc.rect(startX, startY, totalWidth, titleHeight).strokeColor("#000000").lineWidth(OUTER_LINE).stroke();
 
   doc.fillColor("#000000").font("Helvetica-Bold").fontSize(11);
   doc.text(`Laporan keuangan proyek ${data.projectName}`, startX, startY + 4, { width: totalWidth, align: "center" });
@@ -171,11 +175,11 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     keterangan: { x: startX + 670, w: 131.89 }
   };
 
-  doc.rect(startX, headerY, totalWidth, headerHeight).lineWidth(0.8).stroke();
+  doc.rect(startX, headerY, totalWidth, headerHeight).lineWidth(OUTER_LINE).stroke();
 
   doc.moveTo(cols.kredit.x, headerY + 13)
      .lineTo(cols.kredit.x + cols.kredit.w, headerY + 13)
-     .lineWidth(0.5)
+     .lineWidth(INNER_LINE)
      .stroke();
 
   const vLineXPositions = [
@@ -193,13 +197,13 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
   vLineXPositions.forEach(vx => {
     const topY = (vx > cols.kredit.x && vx < cols.debit.x) ? (headerY + 13) : headerY;
-    doc.moveTo(vx, topY).lineTo(vx, headerY + headerHeight).lineWidth(0.5).stroke();
+    doc.moveTo(vx, topY).lineTo(vx, headerY + headerHeight).lineWidth(INNER_LINE).stroke();
   });
 
   doc.font("Helvetica-Bold").fontSize(8);
   doc.text("Tanggal", cols.tanggal.x, headerY + 8, { width: cols.tanggal.w, align: "center" });
   doc.text("Deskripsi", cols.deskripsi.x, headerY + 8, { width: cols.deskripsi.w, align: "center" });
-  
+
   doc.text("Kredit", cols.kredit.x, headerY + 3, { width: cols.kredit.w, align: "center" });
   doc.fontSize(7);
   cols.kredit.sub.forEach(subCol => {
@@ -211,9 +215,10 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
   doc.text("Saldo", cols.saldo.x, headerY + 8, { width: cols.saldo.w, align: "center" });
   doc.text("Keterangan", cols.keterangan.x, headerY + 8, { width: cols.keterangan.w, align: "center" });
 
-  // 3. TABLE BODY
+  // 3. TABLE BODY — direstrukturisasi supaya garis tidak dobel/numpuk
   let currentY = headerY + headerHeight;
   let runningBalance = 0;
+  const tableBodyTop = currentY;
 
   doc.font("Helvetica").fontSize(7.5).fillColor("#000000");
 
@@ -230,12 +235,14 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     }
 
     const rowTop = currentY;
+    const rowBottom = rowTop + calcRowHeight;
 
-    doc.rect(startX, rowTop, totalWidth, calcRowHeight).lineWidth(0.4).stroke();
-
-    vLineXPositions.forEach(vx => {
-      doc.moveTo(vx, rowTop).lineTo(vx, rowTop + calcRowHeight).lineWidth(0.4).stroke();
-    });
+    // Hanya gambar garis horizontal di bagian BAWAH tiap baris (sekali, tidak dobel)
+    doc.moveTo(startX, rowBottom)
+       .lineTo(startX + totalWidth, rowBottom)
+       .lineWidth(INNER_LINE)
+       .strokeColor("#000000")
+       .stroke();
 
     if (tx) {
       const textPaddingY = rowTop + 3.5;
@@ -254,7 +261,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
         const descLower = (tx.description || "").toLowerCase();
         let cat = tx.category || "Lain-Lain";
         if (descLower.includes("kontrakan")) cat = "Akomodasi";
-        
+
         const targetSub = cols.kredit.sub.find(s => s.name === cat) || cols.kredit.sub[5];
         doc.text(formatAmountNumber(tx.amount), targetSub.x + 2, textPaddingY, { width: targetSub.w - 4, align: "right" });
       }
@@ -269,8 +276,25 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     currentY += calcRowHeight;
   }
 
+  const tableBodyBottom = currentY;
+
+  // Gambar garis vertikal SEKALI SAJA, membentang penuh dari atas sampai bawah badan tabel
+  vLineXPositions.forEach(vx => {
+    doc.moveTo(vx, tableBodyTop)
+       .lineTo(vx, tableBodyBottom)
+       .lineWidth(INNER_LINE)
+       .strokeColor("#000000")
+       .stroke();
+  });
+
+  // Gambar outer frame (border luar) badan tabel SEKALI di akhir
+  doc.rect(startX, tableBodyTop, totalWidth, tableBodyBottom - tableBodyTop)
+     .lineWidth(OUTER_LINE)
+     .strokeColor("#000000")
+     .stroke();
+
   // Footer Stamp on Page 1
-  doc.moveTo(startX, currentY + 10).lineTo(startX + totalWidth, currentY + 10).lineWidth(0.8).stroke();
+  doc.moveTo(startX, currentY + 10).lineTo(startX + totalWidth, currentY + 10).lineWidth(OUTER_LINE).stroke();
   doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333");
   doc.text("ASET HARTONO MULYA JAYA KONSTRUKSI", startX, currentY + 15, { width: totalWidth, align: "center" });
 
@@ -282,7 +306,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
     // Header Title Box
     const headerTitleH = 34;
-    doc.rect(startX, startY, totalWidth, headerTitleH).strokeColor("#000000").lineWidth(0.8).stroke();
+    doc.rect(startX, startY, totalWidth, headerTitleH).strokeColor("#000000").lineWidth(OUTER_LINE).stroke();
     doc.fillColor("#000000").font("Helvetica-Bold").fontSize(10.5);
     doc.text("LAMPIRAN DOKUMENTASI FOTO BUKTI NOTA & TRANSFER (REKAP MINGGUAN)", startX, startY + 5, { width: totalWidth, align: "center" });
     doc.fontSize(9.5).text(`[${data.projectName}]`, startX, startY + 18, { width: totalWidth, align: "center" });
@@ -297,12 +321,12 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       const cardX = startX + colIdx * (cardW + 15.89);
 
       // Card Outer Frame
-      doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(0.7).stroke();
+      doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(OUTER_LINE).stroke();
 
       // Card Header Info (Line 1 & Line 2)
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
       doc.text(`Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`, cardX + 8, photoY + 7, { width: cardW - 16, align: "left", lineBreak: false });
-      
+
       const cat = tx.category || "Lain-Lain";
       const type = tx.type || "Kredit";
       doc.font("Helvetica").fontSize(8).fillColor("#333333");
@@ -314,8 +338,8 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       const imgFrameW = cardW - 16;
       const imgFrameH = cardH - 42;
 
-      // Draw light container border
-      doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).strokeColor("#cbd5e1").lineWidth(0.8).stroke();
+      // Draw light container border (garis dekoratif tipis, warna abu-abu muda)
+      doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).strokeColor("#cbd5e1").lineWidth(INNER_LINE).stroke();
 
       let imgBuf: Buffer | null = null;
       if (tx.photoPath && fs.existsSync(tx.photoPath)) {
@@ -358,7 +382,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     }
 
     // Footer Stamp on Page 2
-    doc.moveTo(startX, 555).lineTo(startX + totalWidth, 555).lineWidth(0.8).stroke();
+    doc.moveTo(startX, 555).lineTo(startX + totalWidth, 555).lineWidth(OUTER_LINE).stroke();
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333");
     doc.text("ASET HARTONO MULYA JAYA KONSTRUKSI", startX, 560, { width: totalWidth, align: "center" });
   }
