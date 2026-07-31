@@ -33,6 +33,39 @@ function getMonthYearLabel(): string {
   return `${months[now.getMonth()]} ${now.getFullYear()}`;
 }
 
+async function checkUserRole(telegramId: number | string): Promise<string | null> {
+  try {
+    const url = `${APPS_SCRIPT_WEBHOOK_URL}?action=check_role&telegram_id=${telegramId}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json: any = await res.json();
+    return json && json.role ? json.role : null;
+  } catch (err) {
+    console.error("❌ Error checking role:", err);
+    return null;
+  }
+}
+
+function mapTopUpsToTransactions(topups: any[]): Transaction[] {
+  if (!Array.isArray(topups)) return [];
+  return topups.map((tp: any) => ({
+    date: tp.date,
+    description: `Top Up Kas Proyek${tp.recordedBy ? " oleh " + tp.recordedBy : ""}`,
+    type: "Debit" as const,
+    amount: Number(tp.amount) || 0,
+    note: "Kas Proyek"
+  }));
+}
+
+function sortTransactionsByDate(txs: Transaction[]): Transaction[] {
+  return [...txs].sort((a, b) => {
+    const da = new Date(a.date || "").getTime();
+    const db = new Date(b.date || "").getTime();
+    if (isNaN(da) || isNaN(db)) return 0;
+    return da - db;
+  });
+}
+
 // 1. Command /start & /help
 bot.onText(/\/(start|help)/, (msg) => {
   const chatId = msg.chat.id;
@@ -46,7 +79,8 @@ Ketik pesan transaksi atau kirim foto nota langsung:
 • <code>10rb spidol</code>
 
 📊 <b>COMMAND KELOLA PROYEK & LAPORAN:</b>
-• <code>/rekap</code> atau <code>/laporan</code> : Dapatkan Rincian Ringkasan & File PDF Laporan Resmi Instant
+• <code>/rekap</code> atau <code>/laporan</code> : Laporan PDF Petty Cash
+• <code>/rekapgabungan</code> : Laporan PDF Gabungan (Petty Cash + Kas Proyek) — khusus Manajer/Admin
 • <code>/saldo</code> : Cek Rincian Saldo & Histori Proyek Aktif
 • <code>/proyek</code> : Cek Informasi Proyek Aktif Saat Ini
   `;
@@ -54,21 +88,59 @@ Ketik pesan transaksi atau kirim foto nota langsung:
   bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });
 });
 
-// 2. Command /rekap atau /laporan
-bot.onText(/\/(rekap|laporan)/, async (msg) => {
+// 2a. Command /rekap atau /laporan -> Laporan PETTY CASH SAJA
+bot.onText(/^\/(rekap|laporan)(@\w+)?(\s|$)/, async (msg) => {
   const chatId = msg.chat.id;
+  const telegramId = msg.from?.id;
 
+  if (!telegramId) return;
+
+  const role = await checkUserRole(telegramId);
+
+  if (!role) {
+    bot.sendMessage(chatId,
+      `🔒 <b>Akun Anda belum terdaftar.</b>\nSilakan hubungi Admin untuk didaftarkan.\n\n📋 Telegram ID Anda: <code>${telegramId}</code>`,
+      { parse_mode: "HTML" }
+    );
+    return;
+  }
+
+  await sendPettyCashReport(chatId, telegramId, role);
+});
+
+// 2b. Command /rekapgabungan -> Laporan GABUNGAN (Petty Cash + Kas Proyek), khusus Manajer/Admin
+bot.onText(/^\/rekapgabungan(@\w+)?(\s|$)/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from?.id;
+
+  if (!telegramId) return;
+
+  const role = await checkUserRole(telegramId);
+
+  if (!role) {
+    bot.sendMessage(chatId,
+      `🔒 <b>Akun Anda belum terdaftar.</b>\nSilakan hubungi Admin untuk didaftarkan.\n\n📋 Telegram ID Anda: <code>${telegramId}</code>`,
+      { parse_mode: "HTML" }
+    );
+    return;
+  }
+
+  if (role === "Pengawas") {
+    bot.sendMessage(chatId,
+      `⛔ <b>Akses Ditolak.</b>\nLaporan Gabungan (Petty Cash + Kas Proyek) khusus untuk role <b>Manajer Proyek</b> / <b>Admin</b>.\nRole Anda saat ini: <b>${role}</b>\n\n💡 Gunakan <code>/rekap</code> untuk laporan Petty Cash Anda.`,
+      { parse_mode: "HTML" }
+    );
+    return;
+  }
+
+  await sendPettyCashReport(chatId, telegramId, role, /* includeKasProyek */ true);
+});
+
+// Fungsi inti pembuat & pengirim laporan, dipakai oleh kedua command di atas
+async function sendPettyCashReport(chatId: number, telegramId: number, role: string, includeKasProyek: boolean = false) {
   try {
-    let transactions: Transaction[] = [
-      { date: "24 Jul 2026", description: "Kas Pek. Pulomas 1", type: "Debit", amount: 1600000 },
-      { date: "24 Jul 2026", description: "Pembayaran Kontrakan Tukang Pek. Pulomas", type: "Kredit", category: "Akomodasi", amount: 1600000 },
-      { date: "24 Jul 2026", description: "Kas Pek. Pulomas 1", type: "Debit", amount: 400000 },
-      { date: "24 Jul 2026", description: "Spidol", type: "Kredit", category: "ATK", amount: 10000 },
-      { date: "24 Jul 2026", description: "Nota 1", type: "Kredit", category: "Material", amount: 50000 },
-      { date: "24 Jul 2026", description: "Nota 2", type: "Kredit", category: "Material", amount: 75000 }
-    ];
+    let transactions: Transaction[] = [];
     let projectName = "PERPUSTAKAAN LANTAI 10 - PULOMAS";
-
     let periodLabel = "Semua Riwayat";
 
     try {
@@ -76,30 +148,32 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
       console.log("🔍 Fetching transactions from:", jsonUrl);
 
       const res = await fetch(jsonUrl);
-      console.log("📥 json_data response status:", res.status);
-
       const rawText = await res.text();
-      console.log("📦 json_data response body (first 500 chars):", rawText.slice(0, 500));
 
       if (res.ok && !rawText.trim().startsWith("<!doctype") && !rawText.trim().startsWith("<html")) {
-        try {
-          const json: any = JSON.parse(rawText);
-          if (json && json.transactions && Array.isArray(json.transactions) && json.transactions.length > 0) {
-            transactions = json.transactions.map((t: any) => ({
-              ...t,
-              description: t.merchant || t.description || ""
-            }));
-            if (json.projectName) projectName = json.projectName;
-            if (json.period) periodLabel = json.period;
-            console.log(`✅ Berhasil load ${transactions.length} transaksi asli dari Apps Script`);
-          } else {
-            console.warn("⚠️ Response json_data tidak berisi transactions, pakai data dummy fallback");
+        const json: any = JSON.parse(rawText);
+
+        if (json && json.transactions && Array.isArray(json.transactions)) {
+          transactions = json.transactions.map((t: any) => ({
+            ...t,
+            description: t.merchant || t.description || ""
+          }));
+
+          // Kalau role Pengawas & laporan Petty Cash saja -> filter HANYA transaksi milik dirinya sendiri
+          if (role === "Pengawas") {
+            transactions = transactions.filter((t: any) => String(t.userId) === String(telegramId));
           }
-        } catch (jsonErr) {
-          console.error("❌ Failed to parse JSON response:", jsonErr);
+
+          if (includeKasProyek && json.topups) {
+            const topupTx = mapTopUpsToTransactions(json.topups);
+            transactions = sortTransactionsByDate(transactions.concat(topupTx));
+          }
         }
+
+        if (json.projectName) projectName = json.projectName;
+        if (json.period) periodLabel = json.period;
       } else {
-        console.error("❌ json_data fetch gagal atau mengembalikan HTML (Web App Apps Script perlu di-redeploy di Google Script Dashboard)");
+        console.error("❌ json_data fetch gagal atau mengembalikan HTML");
       }
     } catch (err) {
       console.error("❌ Error fetch json_data:", err);
@@ -113,28 +187,32 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
     });
     const saldoTerkini = totalDebit - totalKredit;
 
+    const reportTypeLabel = includeKasProyek ? "Gabungan (Petty Cash + Kas Proyek)" : "Petty Cash";
+    const scopeLabel = (role === "Pengawas" && !includeKasProyek) ? " — Transaksi Anda" : "";
+
     const summaryCaption = `
-📊 <b>LAPORAN KEUANGAN PETTY CASH</b>
+📊 <b>LAPORAN KEUANGAN ${reportTypeLabel.toUpperCase()}${scopeLabel}</b>
 ━━━━━━━━━━━━━━━━━━━━━━
 🏗️ <b>Proyek:</b> ${projectName}
 📅 <b>Periode:</b> ${getMonthYearLabel()}
 
-💵 <b>Total Top-Up:</b> Rp ${totalDebit.toLocaleString("id-ID")}
+💵 <b>Total Top-Up/Debit:</b> Rp ${totalDebit.toLocaleString("id-ID")}
 💸 <b>Total Pengeluaran:</b> Rp ${totalKredit.toLocaleString("id-ID")}
-💰 <b>Saldo Terkini Proyek:</b> Rp ${saldoTerkini.toLocaleString("id-ID")}
+💰 <b>Saldo Terkini:</b> Rp ${saldoTerkini.toLocaleString("id-ID")}
 ━━━━━━━━━━━━━━━━━━━━━━
 📄 <i>File Laporan PDF Resmi (A4 Landscape) Terlampir:</i>
     `.trim();
 
     const reportData: ProjectReportData = {
       projectName: projectName,
-      year: getMonthYearLabel(),
+      year: `${getMonthYearLabel()} — ${reportTypeLabel}`,
       transactions: transactions
     };
 
     const pdfBuffer = await generatePDFBuffer(reportData);
     const safeProj = projectName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const fileName = `Laporan_PettyCash_${safeProj}_${getTodayFormatted().replace(/\s+/g, "_")}.pdf`;
+    const safeType = includeKasProyek ? "Gabungan" : "PettyCash";
+    const fileName = `Laporan_${safeType}_${safeProj}_${getTodayFormatted().replace(/\s+/g, "_")}.pdf`;
 
     await bot.sendDocument(chatId, pdfBuffer, {
       caption: summaryCaption,
@@ -148,7 +226,7 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
     console.error("Error generating PDF in bot:", err);
     bot.sendMessage(chatId, `❌ Gagal membuat laporan PDF: ${err.message}`);
   }
-});
+}
 
 // 3. Command /saldo
 bot.onText(/\/saldo/, async (msg) => {

@@ -61,6 +61,7 @@ function doGet(e) {
   if (action === "json_data" || action === "get_data") {
     try {
       const txs = getProjectTransactions(projName, startDate, endDate);
+      const topups = getProjectTopUps(projName, startDate, endDate);
 
       txs.forEach(t => {
         t.date = toPlainDateString(t.date);
@@ -76,12 +77,19 @@ function doGet(e) {
       const jsonRes = JSON.stringify({
         projectName: projName,
         period: periodLabel,
-        transactions: txs
+        transactions: txs,
+        topups: topups
       });
       return ContentService.createTextOutput(jsonRes).setMimeType(ContentService.MimeType.JSON);
     } catch (err) {
       return ContentService.createTextOutput(JSON.stringify({ error: err.message })).setMimeType(ContentService.MimeType.JSON);
     }
+  }
+
+  if (action === "check_role") {
+    const telegramId = params.telegram_id || "";
+    const role = getUserRole(telegramId);
+    return ContentService.createTextOutput(JSON.stringify({ role: role })).setMimeType(ContentService.MimeType.JSON);
   }
 
   if (action === "report" || action === "pdf" || params.project) {
@@ -1410,6 +1418,7 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
 
     result.push({
       id: data[i][0],
+      userId: data[i][2],
       date: data[i][5],
       userName: data[i][3],
       amount: Number(data[i][6]),
@@ -1419,6 +1428,64 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
       type: data[i][10],
       status: data[i][11],
       photoUrl: data[i][14] // Column O: PhotoUrl
+    });
+  }
+  return result;
+}
+
+const ROLE_PENGAWAS = "Pengawas";
+const ROLE_MANAJER = "Manajer Proyek";
+const ROLE_ADMIN = "Admin";
+
+function getUserNameById(userId) {
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  if (!sheet) return "";
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(userId)) {
+      return data[i][1] || "";
+    }
+  }
+  return "";
+}
+
+function getUserRole(userId) {
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  if (!sheet) return "Pengawas";
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(userId)) {
+      return data[i][3] || "Pengawas";
+    }
+  }
+  return "Pengawas";
+}
+
+function getProjectTopUps(projectName, startDate = null, endDate = null) {
+  const sheet = getDbSpreadsheet().getSheetByName("TopUps");
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  const result = [];
+
+  const startOnly = startDate ? new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()) : null;
+  const endOnly = endDate ? new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()) : null;
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2] !== projectName) continue;
+
+    const rawDate = data[i][1]; // kolom Timestamp
+    const txDate = (Object.prototype.toString.call(rawDate) === '[object Date]') ? rawDate : new Date(rawDate);
+
+    if (startOnly && endOnly && txDate && !isNaN(txDate.getTime())) {
+      const txOnly = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate());
+      if (txOnly < startOnly || txOnly > endOnly) continue;
+    }
+
+    result.push({
+      id: data[i][0],
+      date: toPlainDateString(txDate),
+      amount: Number(data[i][3]) || 0,
+      recordedBy: getUserNameById(data[i][4]) || String(data[i][4] || "")
     });
   }
   return result;
