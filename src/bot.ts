@@ -60,16 +60,33 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
     let projectName = "PERPUSTAKAAN LANTAI 10 - PULOMAS";
 
     try {
-      const res = await fetch(`${APPS_SCRIPT_WEBHOOK_URL}?action=json_data&project=${encodeURIComponent(projectName)}`);
-      if (res.ok) {
-        const json: any = await res.json();
-        if (json && json.transactions && Array.isArray(json.transactions)) {
-          transactions = json.transactions;
-          if (json.projectName) projectName = json.projectName;
+      const jsonUrl = `${APPS_SCRIPT_WEBHOOK_URL}?action=json_data&project=${encodeURIComponent(projectName)}`;
+      console.log("🔍 Fetching transactions from:", jsonUrl);
+
+      const res = await fetch(jsonUrl);
+      console.log("📥 json_data response status:", res.status);
+
+      const rawText = await res.text();
+      console.log("📦 json_data response body (first 500 chars):", rawText.slice(0, 500));
+
+      if (res.ok && !rawText.trim().startsWith("<!doctype") && !rawText.trim().startsWith("<html")) {
+        try {
+          const json: any = JSON.parse(rawText);
+          if (json && json.transactions && Array.isArray(json.transactions) && json.transactions.length > 0) {
+            transactions = json.transactions;
+            if (json.projectName) projectName = json.projectName;
+            console.log(`✅ Berhasil load ${transactions.length} transaksi asli dari Apps Script`);
+          } else {
+            console.warn("⚠️ Response json_data tidak berisi transactions, pakai data dummy fallback");
+          }
+        } catch (jsonErr) {
+          console.error("❌ Failed to parse JSON response:", jsonErr);
         }
+      } else {
+        console.error("❌ json_data fetch gagal atau mengembalikan HTML (Web App Apps Script perlu di-redeploy di Google Script Dashboard)");
       }
     } catch (err) {
-      console.error("Error fetching json_data:", err);
+      console.error("❌ Error fetch json_data:", err);
     }
 
     let totalDebit = 0;
