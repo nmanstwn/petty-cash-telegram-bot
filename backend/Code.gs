@@ -279,10 +279,23 @@ function sendHelpMessage(chatId, userName) {
 function ensureRegisteredUser(chatId, userId) {
   const role = getUserRole(userId);
   if (!role) {
-    sendMessage(
-      chatId,
-      "🔒 *Akun Anda belum terdaftar.*\n\nSilakan hubungi Admin untuk didaftarkan terlebih dahulu.\n\n📋 *Telegram ID Anda:* `" + userId + "`"
-    );
+    const adminUsername = getProperty("ADMIN_TELEGRAM_USERNAME");
+    let adminContact = "Admin";
+    if (adminUsername) {
+      const cleanUsername = adminUsername.replace(/^@/, "").trim();
+      adminContact = `@${cleanUsername}\n\natau\n\nhttps://t.me/${cleanUsername}`;
+    }
+
+    const text = `🔒 *Akun Belum Terdaftar*\n\n` +
+      `Akun Telegram Anda belum terdaftar pada sistem Kas Proyek.\n\n` +
+      `Silakan screenshot pesan ini dan kirimkan kepada Admin untuk didaftarkan.\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `🆔 *Telegram ID*\n\`${userId}\`\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `👤 *Hubungi Admin*\n\n${adminContact}\n\n` +
+      `Setelah akun Anda didaftarkan, kirim kembali /start.`;
+
+    sendMessage(chatId, text);
     return false;
   }
   return true;

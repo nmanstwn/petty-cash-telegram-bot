@@ -105,6 +105,25 @@ Ketik pesan transaksi atau kirim foto nota langsung:
   bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });
 });
 
+function sendUnregisteredNotice(chatId: number, telegramId: number) {
+  const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "").replace(/^@/, "").trim();
+  const adminContact = adminUsername
+    ? `@${adminUsername}\n\natau\n\nhttps://t.me/${adminUsername}`
+    : "Admin";
+
+  const msg = `🔒 <b>Akun Belum Terdaftar</b>\n\n` +
+    `Akun Telegram Anda belum terdaftar pada sistem Kas Proyek.\n\n` +
+    `Silakan screenshot pesan ini dan kirimkan kepada Admin untuk didaftarkan.\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `🆔 <b>Telegram ID</b>\n<code>${telegramId}</code>\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `👤 <b>Hubungi Admin</b>\n\n` +
+    `${adminContact}\n\n` +
+    `Setelah akun Anda didaftarkan, kirim kembali /start.`;
+
+  bot.sendMessage(chatId, msg, { parse_mode: "HTML" });
+}
+
 // 2a. Command /rekap atau /laporan -> Laporan PETTY CASH SAJA
 bot.onText(/^\/(rekap|laporan)(@\w+)?(\s|$)/, async (msg) => {
   const chatId = msg.chat.id;
@@ -115,10 +134,7 @@ bot.onText(/^\/(rekap|laporan)(@\w+)?(\s|$)/, async (msg) => {
   const role = await checkUserRole(telegramId);
 
   if (!role) {
-    bot.sendMessage(chatId,
-      `🔒 <b>Akun Anda belum terdaftar.</b>\nSilakan hubungi Admin untuk didaftarkan.\n\n📋 Telegram ID Anda: <code>${telegramId}</code>`,
-      { parse_mode: "HTML" }
-    );
+    sendUnregisteredNotice(chatId, telegramId);
     return;
   }
 
@@ -135,10 +151,7 @@ bot.onText(/^\/rekapgabungan(@\w+)?(\s|$)/, async (msg) => {
   const role = await checkUserRole(telegramId);
 
   if (!role) {
-    bot.sendMessage(chatId,
-      `🔒 <b>Akun Anda belum terdaftar.</b>\nSilakan hubungi Admin untuk didaftarkan.\n\n📋 Telegram ID Anda: <code>${telegramId}</code>`,
-      { parse_mode: "HTML" }
-    );
+    sendUnregisteredNotice(chatId, telegramId);
     return;
   }
 
