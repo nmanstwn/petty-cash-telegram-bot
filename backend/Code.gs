@@ -155,6 +155,11 @@ function handleMessage(message) {
   const userName = message.from.first_name + (message.from.last_name ? " " + message.from.last_name : "");
   const text = message.text ? message.text.trim() : "";
 
+  // Izinkan /start dan /help tanpa registrasi
+  const isPublicCommand = text === "/start" || text.startsWith("/start ") ||
+                          text === "/help"  || text.startsWith("/help ");
+  if (!isPublicCommand && !ensureRegisteredUser(chatId, userId)) return;
+
   // A. Jika ada foto (Nota/Bukti Transfer)
   if (message.photo && message.photo.length > 0) {
     handlePhotoMessage(message);
@@ -266,6 +271,19 @@ function sendHelpMessage(chatId, userName) {
   sendMessage(chatId, text);
 }
 
+// Middleware validasi: kembalikan false & kirim pesan jika user belum terdaftar
+function ensureRegisteredUser(chatId, userId) {
+  const role = getUserRole(userId);
+  if (!role) {
+    sendMessage(
+      chatId,
+      "🔒 *Akun Anda belum terdaftar.*\n\nSilakan hubungi Admin untuk didaftarkan terlebih dahulu.\n\n📋 *Telegram ID Anda:* `" + userId + "`"
+    );
+    return false;
+  }
+  return true;
+}
+
 // ------------------------------------------------------------------------------
 // 3. FITUR PENCATATAN FOTO NOTA (SUPER KILAT & INSTAN)
 // ------------------------------------------------------------------------------
@@ -274,7 +292,9 @@ function handlePhotoMessage(message) {
   const userId = message.from.id;
   const userName = message.from.first_name || "Staf";
   const caption = message.caption ? message.caption.trim() : "";
-  
+
+  if (!ensureRegisteredUser(chatId, userId)) return;
+
   const photoObj = message.photo[message.photo.length - 1];
   const fileId = photoObj.file_id;
 
@@ -377,6 +397,7 @@ function handlePhotoMessage(message) {
 
 function handleTextDraftMessage(userId, chatId, userName, text) {
   if (!text) return;
+  if (!ensureRegisteredUser(chatId, userId)) return;
 
   const detected = detectTransactionTypeAndCategory(text);
   const txType = detected.type;
@@ -509,6 +530,12 @@ function handleCallbackQuery(cb) {
   const data = cb.data;
   const userId = cb.from.id;
   const userName = cb.from.first_name || "Admin";
+
+  // Blokir user tidak terdaftar dari semua aksi tombol inline
+  if (!ensureRegisteredUser(chatId, userId)) {
+    answerCallbackQuery(cbId, "⛔ Akses ditolak. Akun belum terdaftar.");
+    return;
+  }
 
   answerCallbackQuery(cbId, "Memproses...");
 
