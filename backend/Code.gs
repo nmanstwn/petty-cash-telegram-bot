@@ -2010,3 +2010,10 @@ function testAuthPermissions() {
   Logger.log("Drive Root Folder: " + folder.getName());
   Logger.log("Google Drive & Sheets Permissions OK! ✅");
 }
+
+function DEBUG_cekToken() {
+  const token = PropertiesService.getScriptProperties().getProperty("TELEGRAM_BOT_TOKEN");
+  const adminId = PropertiesService.getScriptProperties().getProperty("ADMIN_TELEGRAM_ID");
+  Logger.log("TELEGRAM_BOT_TOKEN (Apps Script): " + token);
+  Logger.log("ADMIN_TELEGRAM_ID (Apps Script): " + adminId);
+}
