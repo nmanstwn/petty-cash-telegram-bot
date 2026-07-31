@@ -324,7 +324,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     let colIdx = 0;
 
     // Ubah angka ini untuk atur jumlah foto per baris (3 atau 4 sesuai kebutuhan)
-    const PHOTOS_PER_ROW = 3;
+    const PHOTOS_PER_ROW = 4;
     const cardGap = 12;
     const cardW = (totalWidth - (PHOTOS_PER_ROW - 1) * cardGap) / PHOTOS_PER_ROW;
     const cardH = 230;
