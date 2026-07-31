@@ -136,11 +136,24 @@ bot.onText(/^\/rekapgabungan(@\w+)?(\s|$)/, async (msg) => {
   await sendPettyCashReport(chatId, telegramId, role, /* includeKasProyek */ true);
 });
 
+async function getUserActiveProjectFromScript(telegramId: number | string): Promise<string> {
+  try {
+    const url = `${APPS_SCRIPT_WEBHOOK_URL}?action=get_active_project&telegram_id=${telegramId}`;
+    const res = await fetch(url);
+    if (!res.ok) return "Proyek Utama";
+    const json: any = await res.json();
+    return json && json.activeProject ? json.activeProject : "Proyek Utama";
+  } catch (err) {
+    console.error("❌ Error fetching active project:", err);
+    return "Proyek Utama";
+  }
+}
+
 // Fungsi inti pembuat & pengirim laporan, dipakai oleh kedua command di atas
 async function sendPettyCashReport(chatId: number, telegramId: number, role: string, includeKasProyek: boolean = false) {
   try {
     let transactions: Transaction[] = [];
-    let projectName = "PERPUSTAKAAN LANTAI 10 - PULOMAS";
+    let projectName = await getUserActiveProjectFromScript(telegramId);
     let periodLabel = "Semua Riwayat";
 
     try {

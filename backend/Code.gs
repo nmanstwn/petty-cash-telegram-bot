@@ -92,6 +92,12 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({ role: role })).setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (action === "get_active_project") {
+    const telegramId = params.telegram_id || "";
+    const activeProject = getUserActiveProject(telegramId) || "Proyek Utama";
+    return ContentService.createTextOutput(JSON.stringify({ activeProject: activeProject })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (action === "report" || action === "pdf" || params.project) {
     if (action === "pdf") {
       try {
@@ -195,6 +201,12 @@ function handleMessage(message) {
         break;
       case "/catat":
         handleTextDraftMessage(userId, chatId, userName, args.join(" "));
+        break;
+      case "/aturrole":
+        cmdAturRole(chatId, userId, args);
+        break;
+      case "/listuser":
+        cmdListUser(chatId, userId);
         break;
       default:
         sendMessage(chatId, "⚠️ Perintah tidak dikenali. Ketik /help untuk melihat daftar perintah.");
@@ -1547,6 +1559,80 @@ function getAllProjects() {
     if (data[i][0]) projects.push(data[i][0]);
   }
   return projects;
+}
+
+// /aturrole [telegram_id] [pengawas|manajer] — khusus Admin
+function cmdAturRole(chatId, userId, args) {
+  const role = getUserRole(userId);
+  if (role !== ROLE_ADMIN) {
+    sendMessage(chatId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat mengatur role pengguna.");
+    return;
+  }
+
+  if (!args || args.length < 2) {
+    sendMessage(chatId, "⚠️ *Format Salah.* Gunakan: `/aturrole [telegram_id] [pengawas|manajer]`\n*Contoh:* `/aturrole 123456789 manajer` ");
+    return;
+  }
+
+  const targetId = args[0];
+  const roleInput = args[1].toLowerCase();
+
+  let newRole;
+  if (roleInput === "pengawas") {
+    newRole = ROLE_PENGAWAS;
+  } else if (roleInput === "manajer") {
+    newRole = ROLE_MANAJER;
+  } else {
+    sendMessage(chatId, "⚠️ Role tidak dikenali. Gunakan `pengawas` atau `manajer`.");
+    return;
+  }
+
+  setupSheets();
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  const data = sheet.getDataRange().getValues();
+  let found = false;
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(targetId)) {
+      sheet.getRange(i + 1, 4).setValue(newRole); // Kolom D: Role
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    sheet.appendRow([targetId, "User", "", newRole]);
+  }
+
+  sendMessage(chatId, `✅ *Role Berhasil Diatur!*\n━━━━━━━━━━━━━━━━━━━━━━\n👤 *Telegram ID:* \`${targetId}\`\n🏷️ *Role Baru:* *${newRole}*`);
+}
+
+// /listuser — tampilkan semua user & role-nya, khusus Admin
+function cmdListUser(chatId, userId) {
+  const role = getUserRole(userId);
+  if (role !== ROLE_ADMIN) {
+    sendMessage(chatId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat melihat daftar pengguna.");
+    return;
+  }
+
+  setupSheets();
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  const data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) {
+    sendMessage(chatId, "ℹ️ Belum ada user terdaftar.");
+    return;
+  }
+
+  let text = "👥 *DAFTAR PENGGUNA & ROLE*\n━━━━━━━━━━━━━━━━━━━━━━\n";
+  for (let i = 1; i < data.length; i++) {
+    const uid = data[i][0];
+    const uname = data[i][1] || "(tanpa nama)";
+    const urole = data[i][3] || ROLE_PENGAWAS;
+    text += `👤 \`${uid}\` — ${uname}\n   🏷️ ${urole}\n`;
+  }
+
+  sendMessage(chatId, text);
 }
 
 // User State Helper (Cache API)
