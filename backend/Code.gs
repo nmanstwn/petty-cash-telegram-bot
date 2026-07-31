@@ -1245,17 +1245,23 @@ function getDbSpreadsheet() {
 function setupSheets() {
   const ss = getDbSpreadsheet();
   
-  // Sheet Transactions — ID | Timestamp | UserId | UserName | Project | Date | Amount | Merchant | Category | RefNo | Type | Status | ApprovedBy | RejectReason | PhotoUrl | JobRole
+  // Sheet Transactions — ID | Timestamp | UserId | UserName | JobRole | Project | Date | Amount | Merchant | Category | RefNo | Type | Status | ApprovedBy | RejectReason | PhotoUrl
   let sheetTx = ss.getSheetByName("Transactions");
   if (!sheetTx) {
     sheetTx = ss.insertSheet("Transactions");
-    sheetTx.appendRow(["ID", "Timestamp", "UserId", "UserName", "Project", "Date", "Amount", "Merchant", "Category", "RefNo", "Type", "Status", "ApprovedBy", "RejectReason", "PhotoUrl", "JobRole"]);
+    sheetTx.appendRow(["ID", "Timestamp", "UserId", "UserName", "JobRole", "Project", "Date", "Amount", "Merchant", "Category", "RefNo", "Type", "Status", "ApprovedBy", "RejectReason", "PhotoUrl"]);
     sheetTx.getRange("A1:P1").setFontWeight("bold").setBackground("#e2e8f0");
   } else {
     const headers = sheetTx.getRange(1, 1, 1, sheetTx.getLastColumn()).getValues()[0];
-    if (headers.length < 16 || headers[15] !== "JobRole") {
-      sheetTx.getRange(1, 16).setValue("JobRole");
-      sheetTx.getRange(1, 16).setFontWeight("bold").setBackground("#e2e8f0");
+    if (headers.length < 5 || headers[4] !== "JobRole") {
+      // Sisipkan kolom JobRole di posisi 5 (Kolom E)
+      sheetTx.insertColumnAfter(4);
+      sheetTx.getRange("E1").setValue("JobRole").setFontWeight("bold").setBackground("#e2e8f0");
+      const lastRow = sheetTx.getLastRow();
+      if (lastRow > 1) {
+        sheetTx.getRange(2, 5, lastRow - 1, 1).setValue("Pengawas");
+      }
+      Logger.log("Transactions sheet migrated: JobRole added at Column E");
     }
   }
 
@@ -1334,7 +1340,7 @@ function saveTransactionDraft(tx) {
   setupSheets();
   const sheet = getDbSpreadsheet().getSheetByName("Transactions");
   sheet.appendRow([
-    tx.id, new Date(), tx.userId, tx.userName, tx.project, tx.date, tx.amount, tx.merchant, tx.category, tx.refNo, tx.type, tx.status, "", "", tx.photoUrl, tx.jobRole
+    tx.id, new Date(), tx.userId, tx.userName, tx.jobRole, tx.project, tx.date, tx.amount, tx.merchant, tx.category, tx.refNo, tx.type, tx.status, "", "", tx.photoUrl
   ]);
 }
 
@@ -1358,9 +1364,9 @@ function updateTransactionStatus(txId, newStatus, approvedBy, rejectReason) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === txId) {
-      sheet.getRange(i + 1, 12).setValue(newStatus); // Column L: Status
-      if (approvedBy) sheet.getRange(i + 1, 13).setValue(approvedBy);
-      if (rejectReason) sheet.getRange(i + 1, 14).setValue(rejectReason);
+      sheet.getRange(i + 1, 13).setValue(newStatus); // Column M: Status
+      if (approvedBy) sheet.getRange(i + 1, 14).setValue(approvedBy); // Column N: ApprovedBy
+      if (rejectReason) sheet.getRange(i + 1, 15).setValue(rejectReason); // Column O: RejectReason
       break;
     }
   }
@@ -1387,15 +1393,15 @@ function updateTransactionField(txId, field, newValue) {
   }
 
   const colMap = {
-    project: 5,
-    date: 6,
-    amount: 7,
-    merchant: 8,
-    category: 9,
-    refno: 10,
-    type: 11,
-    photourl: 15,
-    jobrole: 16
+    jobrole: 5,
+    project: 6,
+    date: 7,
+    amount: 8,
+    merchant: 9,
+    category: 10,
+    refno: 11,
+    type: 12,
+    photourl: 16
   };
   const colIdx = colMap[fLower];
   if (!colIdx) return;
@@ -1425,16 +1431,16 @@ function getTransactionById(txId) {
         id: data[i][0],
         userId: data[i][2],
         userName: data[i][3],
-        project: data[i][4],
-        date: data[i][5],
-        amount: Number(data[i][6]),
-        merchant: data[i][7],
-        category: data[i][8],
-        refNo: data[i][9],
-        type: data[i][10],
-        status: data[i][11],
-        photoUrl: data[i][14] || "",
-        jobRole: data[i][15] || JOB_PENGAWAS,
+        jobRole: data[i][4] || JOB_PENGAWAS,
+        project: data[i][5],
+        date: data[i][6],
+        amount: Number(data[i][7]),
+        merchant: data[i][8],
+        category: data[i][9],
+        refNo: data[i][10],
+        type: data[i][11],
+        status: data[i][12],
+        photoUrl: data[i][15] || "",
         chatId: data[i][2]
       };
     }
@@ -1480,11 +1486,11 @@ function getProjectBalance(projectName) {
   if (txSheet) {
     const txData = txSheet.getDataRange().getValues();
     for (let i = 1; i < txData.length; i++) {
-      const pName = txData[i][4];
-      const amount = Number(txData[i][6]) || 0;
-      const category = String(txData[i][8] || "");
-      const txType = String(txData[i][10] || "");
-      const status = String(txData[i][11] || "");
+      const pName = txData[i][5]; // Column F: Project
+      const amount = Number(txData[i][7]) || 0; // Column H: Amount
+      const category = String(txData[i][9] || ""); // Column J: Category
+      const txType = String(txData[i][11] || ""); // Column L: Type
+      const status = String(txData[i][12] || ""); // Column M: Status
 
       if (pName === projectName && status === "Approved") {
         if (txType === "Debit" || category.includes("Uang Masuk") || category.includes("TopUp")) {
@@ -1523,14 +1529,14 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
   const endOnly = endDate ? new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()) : null;
 
   for (let i = 1; i < data.length; i++) {
-    if (data[i][4] !== projectName) continue;
+    if (data[i][5] !== projectName) continue; // Column F: Project
 
-    if (startOnly && endOnly && data[i][5]) {
+    if (startOnly && endOnly && data[i][6]) {
       let txDate = null;
-      if (Object.prototype.toString.call(data[i][5]) === '[object Date]') {
-        txDate = data[i][5];
+      if (Object.prototype.toString.call(data[i][6]) === '[object Date]') {
+        txDate = data[i][6];
       } else {
-        const dStr = String(data[i][5]).trim();
+        const dStr = String(data[i][6]).trim();
         if (dStr.includes("-")) {
           const parts = dStr.split("-");
           if (parts.length === 3) txDate = new Date(parts[0], parts[1] - 1, parts[2]);
@@ -1549,15 +1555,16 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
       id: data[i][0],
       userId: data[i][2],
       userName: data[i][3],
-      date: data[i][5],
-      amount: Number(data[i][6]),
-      merchant: data[i][7],
-      category: data[i][8],
-      refNo: data[i][9],
-      type: data[i][10],
-      status: data[i][11],
-      photoUrl: data[i][14] || "",
-      jobRole: data[i][15] || JOB_PENGAWAS
+      jobRole: data[i][4] || JOB_PENGAWAS,
+      project: data[i][5],
+      date: data[i][6],
+      amount: Number(data[i][7]),
+      merchant: data[i][8],
+      category: data[i][9],
+      refNo: data[i][10],
+      type: data[i][11],
+      status: data[i][12],
+      photoUrl: data[i][15] || ""
     });
   }
   return result;
@@ -1691,11 +1698,13 @@ function getUserTransactions(userId, limit) {
     if (String(data[i][2]) === String(userId)) {
       result.push({
         id: data[i][0],
-        date: data[i][5],
-        amount: Number(data[i][6]),
-        merchant: data[i][7],
-        category: data[i][8],
-        status: data[i][11]
+        jobRole: data[i][4] || JOB_PENGAWAS,
+        project: data[i][5],
+        date: data[i][6],
+        amount: Number(data[i][7]),
+        merchant: data[i][8],
+        category: data[i][9],
+        status: data[i][12]
       });
       if (result.length >= limit) break;
     }
