@@ -46,6 +46,19 @@ export function formatSaldoNumber(num: number): string {
   return num.toLocaleString("id-ID");
 }
 
+export function formatDateOnly(dateVal: any): string {
+  if (!dateVal) return "";
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return String(dateVal);
+
+  const day = String(d.getDate()).padStart(2, "0");
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+  const month = monthNames[d.getMonth()];
+  const year = d.getFullYear();
+
+  return `${day} ${month} ${year}`;
+}
+
 function convertDriveUrlToDirect(url: string): string {
   if (!url) return url;
   const match1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
@@ -127,7 +140,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
   // 1. TITLE BOX HEADER
   const titleHeight = 36;
-  doc.rect(startX, startY, totalWidth, titleHeight).strokeColor("#000000").lineWidth(1).stroke();
+  doc.rect(startX, startY, totalWidth, titleHeight).strokeColor("#000000").lineWidth(0.8).stroke();
 
   doc.fillColor("#000000").font("Helvetica-Bold").fontSize(11);
   doc.text(`Laporan keuangan proyek ${data.projectName}`, startX, startY + 4, { width: totalWidth, align: "center" });
@@ -158,11 +171,11 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     keterangan: { x: startX + 670, w: 131.89 }
   };
 
-  doc.rect(startX, headerY, totalWidth, headerHeight).lineWidth(1).stroke();
+  doc.rect(startX, headerY, totalWidth, headerHeight).lineWidth(0.8).stroke();
 
   doc.moveTo(cols.kredit.x, headerY + 13)
      .lineTo(cols.kredit.x + cols.kredit.w, headerY + 13)
-     .lineWidth(0.8)
+     .lineWidth(0.5)
      .stroke();
 
   const vLineXPositions = [
@@ -180,7 +193,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
   vLineXPositions.forEach(vx => {
     const topY = (vx > cols.kredit.x && vx < cols.debit.x) ? (headerY + 13) : headerY;
-    doc.moveTo(vx, topY).lineTo(vx, headerY + headerHeight).lineWidth(0.8).stroke();
+    doc.moveTo(vx, topY).lineTo(vx, headerY + headerHeight).lineWidth(0.5).stroke();
   });
 
   doc.font("Helvetica-Bold").fontSize(8);
@@ -218,20 +231,20 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
     const rowTop = currentY;
 
-    doc.rect(startX, rowTop, totalWidth, calcRowHeight).lineWidth(0.5).stroke();
+    doc.rect(startX, rowTop, totalWidth, calcRowHeight).lineWidth(0.4).stroke();
 
     vLineXPositions.forEach(vx => {
-      doc.moveTo(vx, rowTop).lineTo(vx, rowTop + calcRowHeight).lineWidth(0.5).stroke();
+      doc.moveTo(vx, rowTop).lineTo(vx, rowTop + calcRowHeight).lineWidth(0.4).stroke();
     });
 
     if (tx) {
       const textPaddingY = rowTop + 3.5;
 
       if (tx.date) {
-        doc.text(tx.date, cols.tanggal.x + 2, textPaddingY, { width: cols.tanggal.w - 4, align: "center" });
+        doc.text(formatDateOnly(tx.date), cols.tanggal.x + 2, textPaddingY, { width: cols.tanggal.w - 4, align: "center" });
       }
 
-      doc.text(toTitleCase(tx.description), cols.deskripsi.x + 4, textPaddingY, { width: cols.deskripsi.w - 8, align: "left", lineBreak: false });
+      doc.text(toTitleCase(tx.description), cols.deskripsi.x + 4, textPaddingY, { width: cols.deskripsi.w - 8, align: "center", lineBreak: false });
 
       if (tx.type === "Debit") {
         runningBalance += tx.amount;
@@ -249,7 +262,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       doc.text(formatSaldoNumber(runningBalance), cols.saldo.x + 2, textPaddingY, { width: cols.saldo.w - 4, align: "right" });
 
       if (tx.note) {
-        doc.text(tx.note, cols.keterangan.x + 4, textPaddingY, { width: cols.keterangan.w - 8, align: "left", lineBreak: false });
+        doc.text(tx.note, cols.keterangan.x + 4, textPaddingY, { width: cols.keterangan.w - 8, align: "center", lineBreak: false });
       }
     }
 
@@ -257,7 +270,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
   }
 
   // Footer Stamp on Page 1
-  doc.moveTo(startX, currentY + 10).lineTo(startX + totalWidth, currentY + 10).lineWidth(1).stroke();
+  doc.moveTo(startX, currentY + 10).lineTo(startX + totalWidth, currentY + 10).lineWidth(0.8).stroke();
   doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333");
   doc.text("ASET HARTONO MULYA JAYA KONSTRUKSI", startX, currentY + 15, { width: totalWidth, align: "center" });
 
@@ -269,7 +282,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
     // Header Title Box
     const headerTitleH = 34;
-    doc.rect(startX, startY, totalWidth, headerTitleH).strokeColor("#000000").lineWidth(1).stroke();
+    doc.rect(startX, startY, totalWidth, headerTitleH).strokeColor("#000000").lineWidth(0.8).stroke();
     doc.fillColor("#000000").font("Helvetica-Bold").fontSize(10.5);
     doc.text("LAMPIRAN DOKUMENTASI FOTO BUKTI NOTA & TRANSFER (REKAP MINGGUAN)", startX, startY + 5, { width: totalWidth, align: "center" });
     doc.fontSize(9.5).text(`[${data.projectName}]`, startX, startY + 18, { width: totalWidth, align: "center" });
@@ -284,11 +297,11 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       const cardX = startX + colIdx * (cardW + 15.89);
 
       // Card Outer Frame
-      doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(0.9).stroke();
+      doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(0.7).stroke();
 
       // Card Header Info (Line 1 & Line 2)
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
-      doc.text(`Bukti #${idx + 1}: ${tx.date || ""} - ${toTitleCase(tx.description)}`, cardX + 8, photoY + 7, { width: cardW - 16, align: "left", lineBreak: false });
+      doc.text(`Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`, cardX + 8, photoY + 7, { width: cardW - 16, align: "left", lineBreak: false });
       
       const cat = tx.category || "Lain-Lain";
       const type = tx.type || "Kredit";
@@ -345,7 +358,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     }
 
     // Footer Stamp on Page 2
-    doc.moveTo(startX, 555).lineTo(startX + totalWidth, 555).lineWidth(1).stroke();
+    doc.moveTo(startX, 555).lineTo(startX + totalWidth, 555).lineWidth(0.8).stroke();
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333");
     doc.text("ASET HARTONO MULYA JAYA KONSTRUKSI", startX, 560, { width: totalWidth, align: "center" });
   }

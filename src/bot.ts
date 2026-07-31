@@ -59,6 +59,8 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
     ];
     let projectName = "PERPUSTAKAAN LANTAI 10 - PULOMAS";
 
+    let periodLabel = "Semua Riwayat";
+
     try {
       const jsonUrl = `${APPS_SCRIPT_WEBHOOK_URL}?action=json_data&project=${encodeURIComponent(projectName)}`;
       console.log("🔍 Fetching transactions from:", jsonUrl);
@@ -73,8 +75,12 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
         try {
           const json: any = JSON.parse(rawText);
           if (json && json.transactions && Array.isArray(json.transactions) && json.transactions.length > 0) {
-            transactions = json.transactions;
+            transactions = json.transactions.map((t: any) => ({
+              ...t,
+              description: t.merchant || t.description || ""
+            }));
             if (json.projectName) projectName = json.projectName;
+            if (json.period) periodLabel = json.period;
             console.log(`✅ Berhasil load ${transactions.length} transaksi asli dari Apps Script`);
           } else {
             console.warn("⚠️ Response json_data tidak berisi transactions, pakai data dummy fallback");
@@ -101,7 +107,7 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
 📊 <b>LAPORAN KEUANGAN PETTY CASH</b>
 ━━━━━━━━━━━━━━━━━━━━━━
 🏗️ <b>Proyek:</b> ${projectName}
-📅 <b>Periode:</b> 7 Hari Terakhir
+📅 <b>Periode:</b> ${periodLabel}
 
 💵 <b>Total Top-Up:</b> Rp ${totalDebit.toLocaleString("id-ID")}
 💸 <b>Total Pengeluaran:</b> Rp ${totalKredit.toLocaleString("id-ID")}
@@ -112,7 +118,7 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
 
     const reportData: ProjectReportData = {
       projectName: projectName,
-      year: "7 HARI TERAKHIR",
+      year: periodLabel,
       transactions: transactions
     };
 
