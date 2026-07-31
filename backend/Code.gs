@@ -385,12 +385,14 @@ function handlePhotoMessage(message) {
 
     // 3. Buat Draft Transaksi Seketika (Tanpa Tunggu AI)
     const activeProject = getUserActiveProject(userId) || "Proyek Utama";
+    const userJobRole = getUserJobRole(userId) || JOB_PENGAWAS;
     const txId = "TX-" + Math.floor(100000 + Math.random() * 900000);
 
     saveTransactionDraft({
       id: txId,
       userId: userId,
       userName: userName,
+      jobRole: userJobRole,
       chatId: chatId,
       project: activeProject,
       date: parsedDate ? parsedDate : getTodayDate(),
@@ -466,12 +468,14 @@ function handleTextDraftMessage(userId, chatId, userName, text) {
   }
 
   const activeProject = getUserActiveProject(userId) || "Proyek Utama";
+  const userJobRole = getUserJobRole(userId) || JOB_PENGAWAS;
   const txId = "TX-" + Math.floor(100000 + Math.random() * 900000);
 
   saveTransactionDraft({
     id: txId,
     userId: userId,
     userName: userName,
+    jobRole: userJobRole,
     chatId: chatId,
     project: activeProject,
     date: parsedDate ? parsedDate : getTodayDate(),
@@ -493,13 +497,15 @@ function sendTransactionPreviewMessage(chatId, txId, messageId = null) {
 
   const isDebit = tx.type === "Debit";
   const typeLabel = isDebit ? "📥 UANG MASUK (DEBIT)" : "📤 PENGELUARAN (KREDIT)";
+  const jobRoleLabel = tx.jobRole === JOB_MANAJER ? "Kas Proyek (Manajer)" : "Petty Cash (Pengawas)";
 
   const formattedDate = formatDisplayDate(tx.date);
 
-  const msgText = `📋 *DRAFT TRANSAKSI PETTY CASH*\n` +
+  const msgText = `📋 *DRAFT TRANSAKSI* (${jobRoleLabel.toUpperCase()})\n` +
     `━━━━━━━━━━━━━━━━━━━━━━\n` +
     `• *ID:* \`${tx.id}\`\n` +
     `• *Tipe Transaksi:* *${typeLabel}*\n` +
+    `• *Jalur Kas:* 💼 *${jobRoleLabel}*\n` +
     `• *Tanggal:* ${formattedDate}\n` +
     `• *Nominal:* Rp ${formatRupiah(tx.amount)}\n` +
     `• *Keterangan:* ${tx.merchant}\n` +
@@ -622,7 +628,13 @@ function handleCallbackQuery(cb) {
 
   } else if (data.startsWith("confirm_")) {
     const txId = data.replace("confirm_", "");
-    const tx = getTransactionById(txId);
+    let tx = getTransactionById(txId);
+
+    const currentJobRole = getUserJobRole(userId);
+    if (!currentJobRole) {
+      answerCallbackQuery(cbId, "⛔ Akses ditolak. Akun belum terdaftar.");
+      return;
+    }
 
     // Simpan Foto ke Google Drive secara permanen saat konfirmasi
     if (tx && tx.photoUrl && tx.photoUrl.startsWith("http") && !tx.photoUrl.includes("drive.google.com")) {
@@ -638,23 +650,25 @@ function handleCallbackQuery(cb) {
       }
     }
 
-    // Set Status LANGSUNG Approved (Tanpa Approval)
-    updateTransactionStatus(txId, "Approved", userName);
+    // Simpan Transaksi Permanen dengan JobRole Terverifikasi
+    saveFinalTransaction(tx ? tx : { id: txId, userId: userId }, "Approved", userName);
 
-    // Hitung Saldo Terkini Proyek
+    tx = getTransactionById(txId);
     const projectBalance = getProjectBalance(tx ? tx.project : "");
     const formattedDate = formatDisplayDate(tx ? tx.date : "");
+    const targetKasLabel = (tx && tx.jobRole === JOB_MANAJER) ? "Kas Proyek (Manajer)" : "Petty Cash (Pengawas)";
 
     // Edit pesan konfirmasi user
     editMessageText(chatId, messageId, 
       `✅ *TRANSAKSI BERHASIL DICATAT!*\n` +
       `━━━━━━━━━━━━━━━━━━━━━━\n` +
       `• *ID:* \`${txId}\`\n` +
+      `• *Jalur Kas:* 💼 *${targetKasLabel}*\n` +
       `• *Tanggal:* ${formattedDate}\n` +
-      `• *Nominal:* Rp ${formatRupiah(tx.amount)}\n` +
-      `• *Keterangan:* ${tx.merchant}\n` +
-      `• *Kategori:* 🏷️ ${tx.category}\n` +
-      `• *Proyek:* 🏗️ ${tx.project}\n` +
+      `• *Nominal:* Rp ${formatRupiah(tx ? tx.amount : 0)}\n` +
+      `• *Keterangan:* ${tx ? tx.merchant : "-"}\n` +
+      `• *Kategori:* 🏷️ ${tx ? tx.category : "-"}\n` +
+      `• *Proyek:* 🏗️ ${tx ? tx.project : "-"}\n` +
       `• *Saldo Terkini Proyek:* Rp ${formatRupiah(projectBalance.remaining)}`
     );
 
@@ -1231,12 +1245,18 @@ function getDbSpreadsheet() {
 function setupSheets() {
   const ss = getDbSpreadsheet();
   
-  // Sheet Transactions
+  // Sheet Transactions — ID | Timestamp | UserId | UserName | Project | Date | Amount | Merchant | Category | RefNo | Type | Status | ApprovedBy | RejectReason | PhotoUrl | JobRole
   let sheetTx = ss.getSheetByName("Transactions");
   if (!sheetTx) {
     sheetTx = ss.insertSheet("Transactions");
-    sheetTx.appendRow(["ID", "Timestamp", "UserId", "UserName", "Project", "Date", "Amount", "Merchant", "Category", "RefNo", "Type", "Status", "ApprovedBy", "RejectReason", "PhotoUrl"]);
-    sheetTx.getRange("A1:O1").setFontWeight("bold").setBackground("#e2e8f0");
+    sheetTx.appendRow(["ID", "Timestamp", "UserId", "UserName", "Project", "Date", "Amount", "Merchant", "Category", "RefNo", "Type", "Status", "ApprovedBy", "RejectReason", "PhotoUrl", "JobRole"]);
+    sheetTx.getRange("A1:P1").setFontWeight("bold").setBackground("#e2e8f0");
+  } else {
+    const headers = sheetTx.getRange(1, 1, 1, sheetTx.getLastColumn()).getValues()[0];
+    if (headers.length < 16 || headers[15] !== "JobRole") {
+      sheetTx.getRange(1, 16).setValue("JobRole");
+      sheetTx.getRange(1, 16).setFontWeight("bold").setBackground("#e2e8f0");
+    }
   }
 
   // Sheet TopUps
@@ -1307,12 +1327,23 @@ function getCachedDraft(txId) {
 }
 
 function saveTransactionDraft(tx) {
+  if (!tx.jobRole) {
+    tx.jobRole = getUserJobRole(tx.userId) || JOB_PENGAWAS;
+  }
   setCachedDraft(tx.id, tx);
   setupSheets();
   const sheet = getDbSpreadsheet().getSheetByName("Transactions");
   sheet.appendRow([
-    tx.id, new Date(), tx.userId, tx.userName, tx.project, tx.date, tx.amount, tx.merchant, tx.category, tx.refNo, tx.type, tx.status, "", "", tx.photoUrl
+    tx.id, new Date(), tx.userId, tx.userName, tx.project, tx.date, tx.amount, tx.merchant, tx.category, tx.refNo, tx.type, tx.status, "", "", tx.photoUrl, tx.jobRole
   ]);
+}
+
+// Helper tunggal penentu alur penyimpanan akhir transaksi berdasarkan JobRole pencatat
+function saveFinalTransaction(tx, newStatus, approvedBy, rejectReason) {
+  const currentJobRole = getUserJobRole(tx.userId) || tx.jobRole || JOB_PENGAWAS;
+  tx.jobRole = currentJobRole;
+  updateTransactionField(tx.id, "JobRole", currentJobRole);
+  updateTransactionStatus(tx.id, newStatus, approvedBy, rejectReason);
 }
 
 function updateTransactionStatus(txId, newStatus, approvedBy, rejectReason) {
@@ -1351,6 +1382,7 @@ function updateTransactionField(txId, field, newValue) {
     else if (fLower === "merchant") cached.merchant = newValue;
     else if (fLower === "date") cached.date = newValue;
     else if (fLower === "photourl") cached.photoUrl = newValue;
+    else if (fLower === "jobrole") cached.jobRole = newValue;
     setCachedDraft(txId, cached);
   }
 
@@ -1362,7 +1394,8 @@ function updateTransactionField(txId, field, newValue) {
     category: 9,
     refno: 10,
     type: 11,
-    photourl: 15
+    photourl: 15,
+    jobrole: 16
   };
   const colIdx = colMap[fLower];
   if (!colIdx) return;
@@ -1400,6 +1433,8 @@ function getTransactionById(txId) {
         refNo: data[i][9],
         type: data[i][10],
         status: data[i][11],
+        photoUrl: data[i][14] || "",
+        jobRole: data[i][15] || JOB_PENGAWAS,
         chatId: data[i][2]
       };
     }
@@ -1513,15 +1548,16 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
     result.push({
       id: data[i][0],
       userId: data[i][2],
-      date: data[i][5],
       userName: data[i][3],
+      date: data[i][5],
       amount: Number(data[i][6]),
       merchant: data[i][7],
       category: data[i][8],
       refNo: data[i][9],
       type: data[i][10],
       status: data[i][11],
-      photoUrl: data[i][14] // Column O: PhotoUrl
+      photoUrl: data[i][14] || "",
+      jobRole: data[i][15] || JOB_PENGAWAS
     });
   }
   return result;
