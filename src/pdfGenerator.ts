@@ -159,6 +159,17 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   return null;
 }
 
+function truncateTextToWidth(doc: typeof PDFDocument.prototype, text: string, maxWidth: number): string {
+  if (doc.widthOfString(text) <= maxWidth) return text;
+
+  const ellipsis = "…";
+  let truncated = text;
+  while (truncated.length > 0 && doc.widthOfString(truncated + ellipsis) > maxWidth) {
+    truncated = truncated.slice(0, -1);
+  }
+  return truncated + ellipsis;
+}
+
 async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument.prototype): Promise<void> {
   const startX = 20;
   const startY = 20;
@@ -364,7 +375,9 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
       // Card Header Info (Line 1 & Line 2)
       doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#000000");
-      doc.text(`Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`, cardX + 6, photoY + 6, { width: cardW - 12, align: "left", lineBreak: false });
+      const headerText = `Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`;
+      const headerTextFit = truncateTextToWidth(doc, headerText, cardW - 12);
+      doc.text(headerTextFit, cardX + 6, photoY + 6, { width: cardW - 12, align: "left", lineBreak: false });
 
       const cat = tx.category || "Lain-Lain";
       const type = tx.type || "Kredit";
