@@ -61,6 +61,16 @@ function doGet(e) {
   if (action === "json_data" || action === "get_data") {
     try {
       const txs = getProjectTransactions(projName, startDate, today);
+
+      txs.forEach(t => {
+        if (t.photoUrl && String(t.photoUrl).startsWith("http")) {
+          const base64Img = fetchImageAsBase64(t.photoUrl);
+          if (base64Img) {
+            t.photoUrl = base64Img;
+          }
+        }
+      });
+
       const jsonRes = JSON.stringify({
         projectName: projName,
         period: periodLabel,

@@ -68,42 +68,8 @@ bot.onText(/\/(rekap|laporan)/, async (msg) => {
           if (json.projectName) projectName = json.projectName;
         }
       }
-    } catch {}
-
-function extractPhotoUrlsFromHTML(rawHtml: string): string[] {
-  const unescaped = rawHtml
-    .replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\u([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\/g, '');
-
-  const photos: string[] = [];
-  const base64Matches = [...unescaped.matchAll(/data:image\/[a-zA-Z0-9]+;base64,[A-Za-z0-9+/=\s]+/gi)];
-  base64Matches.forEach(m => {
-    const cleanMatch = m[0].replace(/\s+/g, '');
-    photos.push(cleanMatch);
-  });
-  return photos;
-}
-
-    // Ambil foto nota dari HTML Report Apps Script jika ada
-    try {
-      const htmlRes = await fetch(`${APPS_SCRIPT_WEBHOOK_URL}?action=report&project=${encodeURIComponent(projectName)}`);
-      if (htmlRes.ok) {
-        const htmlText = await htmlRes.text();
-        const photoUrls = extractPhotoUrlsFromHTML(htmlText);
-
-        if (photoUrls.length > 0) {
-          let pIdx = 0;
-          transactions.forEach(t => {
-            if (t.type === "Kredit" && pIdx < photoUrls.length) {
-              t.photoUrl = photoUrls[pIdx];
-              pIdx++;
-            }
-          });
-        }
-      }
     } catch (err) {
-      console.error("Error extracting HTML photos:", err);
+      console.error("Error fetching json_data:", err);
     }
 
     let totalDebit = 0;

@@ -311,7 +311,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
         imgBuf = await fetchImageBuffer(tx.photoUrl);
       }
 
-      if (imgBuf && imgBuf.length > 1000) {
+      if (imgBuf && imgBuf.length > 50) {
         try {
           doc.fillColor("#000000");
           doc.image(imgBuf, imgFrameX + 2, imgFrameY + 2, {
