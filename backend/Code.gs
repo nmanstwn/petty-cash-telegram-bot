@@ -1462,15 +1462,21 @@ function getUserNameById(userId) {
 }
 
 function getUserRole(userId) {
+  const adminId = getProperty("ADMIN_TELEGRAM_ID");
+  if (adminId && String(userId) === String(adminId)) {
+    return ROLE_ADMIN;
+  }
+
   const sheet = getDbSpreadsheet().getSheetByName("Users");
-  if (!sheet) return "Pengawas";
+  if (!sheet) return null;
+
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === String(userId)) {
-      return data[i][3] || "Pengawas";
+      return data[i][3] || null;
     }
   }
-  return "Pengawas";
+  return null; // User tidak terdaftar sama sekali
 }
 
 function getProjectTopUps(projectName, startDate = null, endDate = null) {
