@@ -322,30 +322,34 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
 
     let photoY = startY + headerTitleH + 12;
     let colIdx = 0;
-    const cardW = 393; // 2 columns: (801.89 - 15) / 2 = 393.44pt
-    const cardH = 230; // 2 rows fit within 540pt
+
+    // Ubah angka ini untuk atur jumlah foto per baris (3 atau 4 sesuai kebutuhan)
+    const PHOTOS_PER_ROW = 3;
+    const cardGap = 12;
+    const cardW = (totalWidth - (PHOTOS_PER_ROW - 1) * cardGap) / PHOTOS_PER_ROW;
+    const cardH = 230;
 
     for (let idx = 0; idx < txsWithPhoto.length; idx++) {
       const tx = txsWithPhoto[idx];
-      const cardX = startX + colIdx * (cardW + 15.89);
+      const cardX = startX + colIdx * (cardW + cardGap);
 
       // Card Outer Frame
       doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(OUTER_LINE).stroke();
 
       // Card Header Info (Line 1 & Line 2)
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
-      doc.text(`Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`, cardX + 8, photoY + 7, { width: cardW - 16, align: "left", lineBreak: false });
+      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#000000");
+      doc.text(`Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`, cardX + 6, photoY + 6, { width: cardW - 12, align: "left", lineBreak: false });
 
       const cat = tx.category || "Lain-Lain";
       const type = tx.type || "Kredit";
-      doc.font("Helvetica").fontSize(8).fillColor("#333333");
-      doc.text(`Nominal: Rp ${formatAmountNumber(tx.amount)} | Kategori: ${cat} | Tipe: ${type}`, cardX + 8, photoY + 20, { width: cardW - 16, align: "left", lineBreak: false });
+      doc.font("Helvetica").fontSize(6.5).fillColor("#333333");
+      doc.text(`Rp ${formatAmountNumber(tx.amount)} | ${cat} | ${type}`, cardX + 6, photoY + 17, { width: cardW - 12, align: "left", lineBreak: false });
 
       // Inner Photo Container Box
-      const imgFrameX = cardX + 8;
-      const imgFrameY = photoY + 34;
-      const imgFrameW = cardW - 16;
-      const imgFrameH = cardH - 42;
+      const imgFrameX = cardX + 6;
+      const imgFrameY = photoY + 30;
+      const imgFrameW = cardW - 12;
+      const imgFrameH = cardH - 38;
 
       // Draw light container border (garis dekoratif tipis, warna abu-abu muda)
       doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).strokeColor("#cbd5e1").lineWidth(INNER_LINE).stroke();
@@ -380,7 +384,7 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       }
 
       colIdx++;
-      if (colIdx >= 2) {
+      if (colIdx >= PHOTOS_PER_ROW) {
         colIdx = 0;
         photoY += cardH + 12;
         if (photoY + cardH > 550 && idx < txsWithPhoto.length - 1) {
