@@ -63,6 +63,8 @@ function doGet(e) {
       const txs = getProjectTransactions(projName, startDate, endDate);
 
       txs.forEach(t => {
+        t.date = toPlainDateString(t.date);
+
         if (t.photoUrl && String(t.photoUrl).startsWith("http")) {
           const base64Img = fetchImageAsBase64(t.photoUrl);
           if (base64Img) {
@@ -1648,6 +1650,14 @@ function formatRupiah(number) {
 
 function getTodayDate() {
   return Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+}
+
+function toPlainDateString(dateVal) {
+  if (!dateVal) return "";
+  if (Object.prototype.toString.call(dateVal) === '[object Date]') {
+    return Utilities.formatDate(dateVal, "GMT+7", "yyyy-MM-dd");
+  }
+  return String(dateVal);
 }
 
 function savePhotoToDrive(imgBlob, fileName) {
