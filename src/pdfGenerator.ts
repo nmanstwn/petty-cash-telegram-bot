@@ -365,6 +365,8 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
     const cardGap = 12;
     const cardW = (totalWidth - (PHOTOS_PER_ROW - 1) * cardGap) / PHOTOS_PER_ROW;
     const cardH = 230;
+    const headerZoneH = 40; // area tetap untuk judul + info nominal, teks di-center vertikal di sini
+    const headerBottomGap = 8; // jarak antara zona header dan frame foto
 
     for (let idx = 0; idx < txsWithPhoto.length; idx++) {
       const tx = txsWithPhoto[idx];
@@ -373,22 +375,35 @@ async function buildPDFDocument(data: ProjectReportData, doc: typeof PDFDocument
       // Card Outer Frame
       doc.rect(cardX, photoY, cardW, cardH).strokeColor("#000000").lineWidth(OUTER_LINE).stroke();
 
-      // Card Header Info (Line 1 & Line 2)
-      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#000000");
-      const headerText = `Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`;
-      const headerTextFit = truncateTextToWidth(doc, headerText, cardW - 12);
-      doc.text(headerTextFit, cardX + 6, photoY + 6, { width: cardW - 12, align: "left", lineBreak: false });
-
+      // Card Header: judul (boleh wrap 2 baris) + info nominal, di-center vertikal dalam headerZoneH
       const cat = tx.category || "Lain-Lain";
       const type = tx.type || "Kredit";
+      const textAreaWidth = cardW - 12;
+
+      const titleText = `Bukti #${idx + 1}: ${formatDateOnly(tx.date)} - ${toTitleCase(tx.description)}`;
+      const infoText = `Rp ${formatAmountNumber(tx.amount)} | ${cat} | ${type}`;
+      const gapBetweenLines = 3;
+
+      doc.font("Helvetica-Bold").fontSize(7.5);
+      const titleHeight = doc.heightOfString(titleText, { width: textAreaWidth });
+
+      doc.font("Helvetica").fontSize(6.5);
+      const infoHeight = doc.heightOfString(infoText, { width: textAreaWidth });
+
+      const totalTextHeight = titleHeight + gapBetweenLines + infoHeight;
+      const textBlockStartY = photoY + (headerZoneH - totalTextHeight) / 2; // <-- center vertikal di zona header
+
+      doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#000000");
+      doc.text(titleText, cardX + 6, textBlockStartY, { width: textAreaWidth, align: "left" }); // lineBreak default (wrap diizinkan)
+
       doc.font("Helvetica").fontSize(6.5).fillColor("#333333");
-      doc.text(`Rp ${formatAmountNumber(tx.amount)} | ${cat} | ${type}`, cardX + 6, photoY + 17, { width: cardW - 12, align: "left", lineBreak: false });
+      doc.text(infoText, cardX + 6, textBlockStartY + titleHeight + gapBetweenLines, { width: textAreaWidth, align: "left" });
 
       // Inner Photo Container Box
       const imgFrameX = cardX + 6;
-      const imgFrameY = photoY + 30;
+      const imgFrameY = photoY + headerZoneH;
       const imgFrameW = cardW - 12;
-      const imgFrameH = cardH - 38;
+      const imgFrameH = cardH - headerZoneH - headerBottomGap;
 
       // Draw light container border (garis dekoratif tipis, warna abu-abu muda)
       doc.rect(imgFrameX, imgFrameY, imgFrameW, imgFrameH).strokeColor("#cbd5e1").lineWidth(INNER_LINE).stroke();
