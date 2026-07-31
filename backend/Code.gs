@@ -52,15 +52,15 @@ function doGet(e) {
   const params = e && e.parameter ? e.parameter : {};
   const action = (params.action || "").toLowerCase();
   const projName = params.project || "Proyek Utama";
+  const periodLabel = params.period || "Semua Riwayat";
 
-  const today = new Date();
-  const startDate = new Date(today);
-  startDate.setDate(today.getDate() - (REKAP_DEFAULT_RANGE_DAYS - 1));
-  const periodLabel = params.period || `${REKAP_DEFAULT_RANGE_DAYS} Hari Terakhir`;
+  // Default ambil semua riwayat transaksi tanpa batas tanggal
+  const startDate = null;
+  const endDate = null;
 
   if (action === "json_data" || action === "get_data") {
     try {
-      const txs = getProjectTransactions(projName, startDate, today);
+      const txs = getProjectTransactions(projName, startDate, endDate);
 
       txs.forEach(t => {
         if (t.photoUrl && String(t.photoUrl).startsWith("http")) {
@@ -88,7 +88,7 @@ function doGet(e) {
         const safeProj = projName.replace(/[^a-zA-Z0-9_-]/g, "_");
         const fileName = `Laporan_PettyCash_${safeProj}_${getTodayDate()}.pdf`;
         
-        const pdfBlob = generatePettyCashPDFReport(projName, periodLabel, startDate, today);
+        const pdfBlob = generatePettyCashPDFReport(projName, periodLabel, startDate, endDate);
         pdfBlob.setName(fileName);
 
         // Buat temp file publik sejenak di Drive agar browser langsung mendownload file asli dengan nama terisi!
@@ -119,7 +119,7 @@ function doGet(e) {
       }
     } else {
       try {
-        const htmlContent = generatePettyCashHTMLReportContent(projName, periodLabel, true, startDate, today);
+        const htmlContent = generatePettyCashHTMLReportContent(projName, periodLabel, true, startDate, endDate);
         return HtmlService.createHtmlOutput(htmlContent);
       } catch (err) {
         return HtmlService.createHtmlOutput(`<h3>Error Loading Report: ${err.message}</h3>`);
