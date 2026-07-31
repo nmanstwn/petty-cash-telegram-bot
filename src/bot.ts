@@ -92,13 +92,14 @@ Ketik pesan transaksi atau kirim foto nota langsung:
 
 🔑 <b>Khusus Admin:</b>
 • <code>/tambahproyek [Nama Proyek]</code> — Buat Proyek Baru
-• <code>/aturrole [telegram_id] [pengawas|manajer]</code> — Atur Role User
+• <code>/aturrole [telegram_id] [pengawas|manajer]</code> — Atur JobRole User
+• <code>/setadmin [telegram_id] [on|off]</code> — Beri/Cabut Hak Admin
 • <code>/listuser</code> — Tampilkan Semua User & Role
 
 🏷️ <b>INFO ROLE:</b>
-• <b>Pengawas</b> — Catat & lihat transaksi, cek saldo
-• <b>Manajer Proyek</b> — + Laporan gabungan & top-up
-• <b>Admin</b> — Akses penuh, kelola user & proyek
+• <b>Pengawas</b> — Catat transaksi Petty Cash, cek saldo
+• <b>Manajer</b> — Catat transaksi Kas Proyek + laporan gabungan & top-up
+• <b>IsAdmin ON</b> — Hak akses sistem penuh (bisa dipadukan dengan JobRole apapun)
   `;
 
   bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });

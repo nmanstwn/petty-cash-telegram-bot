@@ -210,6 +210,9 @@ function handleMessage(message) {
       case "/aturrole":
         cmdAturRole(chatId, userId, args);
         break;
+      case "/setadmin":
+        cmdSetAdmin(chatId, userId, args);
+        break;
       case "/listuser":
         cmdListUser(chatId, userId);
         break;
@@ -260,13 +263,14 @@ function sendHelpMessage(chatId, userName) {
     `• /topup [Proyek] [Nominal] — Tambah Top-Up Saldo Kas\n\n` +
     `🔑 *Khusus Admin:*\n` +
     `• /tambahproyek [Nama Proyek] — Buat Proyek Baru\n` +
-    `• /aturrole [telegram_id] [pengawas|manajer] — Atur Role Pengguna\n` +
-    `• /listuser — Tampilkan Semua Pengguna & Role\n\n` +
+    `• /aturrole [telegram_id] [pengawas|manajer] — Atur JobRole Pengguna\n` +
+    `• /setadmin [telegram_id] [on|off] — Beri/Cabut Hak Admin\n` +
+    `• /listuser — Tampilkan Semua Pengguna\n\n` +
 
     `🏷️ *INFO ROLE:*\n` +
-    `• *Pengawas* — Catat & lihat transaksi, cek saldo\n` +
-    `• *Manajer Proyek* — + Laporan gabungan & top-up\n` +
-    `• *Admin* — Akses penuh, kelola user & proyek`;
+    `• *Pengawas* — Catat transaksi Petty Cash, cek saldo, lihat riwayat\n` +
+    `• *Manajer* — Transaksi Kas Proyek + laporan gabungan & top-up\n` +
+    `• *IsAdmin ON* — Hak akses sistem penuh (bisa dipadukan dengan JobRole apapun)`;
     
   sendMessage(chatId, text);
 }
@@ -799,7 +803,7 @@ function cmdRiwayat(chatId, userId) {
 
 // /tambahproyek (Khusus Admin)
 function cmdTambahProyek(chatId, userId, args) {
-  if (getUserRole(userId) !== ROLE_ADMIN) {
+  if (!isAdmin(userId)) {
     sendMessage(chatId, "⚠️ *Akses Ditolak.* Hanya Admin yang dapat menambahkan/membuat proyek baru.");
     return;
   }
@@ -830,7 +834,7 @@ function cmdProyek(chatId, userId, args) {
   if (args.length > 0) {
     const targetProj = args.join(" ").trim();
     if (!projects.includes(targetProj)) {
-      if (getUserRole(userId) === ROLE_ADMIN) {
+      if (isAdmin(userId)) {
         setupSheets();
         const sheetProj = getDbSpreadsheet().getSheetByName("Projects");
         sheetProj.appendRow([targetProj, 0, 500000, "Active"]);
@@ -883,7 +887,7 @@ function cmdTopUp(chatId, userId, args) {
 
   const projects = getAllProjects();
   if (!projects.includes(projectName)) {
-    if (getUserRole(userId) === ROLE_ADMIN) {
+    if (isAdmin(userId)) {
       setupSheets();
       const sheetProj = getDbSpreadsheet().getSheetByName("Projects");
       sheetProj.appendRow([projectName, 0, 500000, "Active"]);
@@ -1238,12 +1242,38 @@ function setupSheets() {
     sheetProj.getRange("A1:D1").setFontWeight("bold").setBackground("#e2e8f0");
   }
 
-  // Sheet Users
+  // Sheet Users — skema baru: UserId | UserName | ActiveProject | JobRole | IsAdmin
   let sheetUser = ss.getSheetByName("Users");
   if (!sheetUser) {
     sheetUser = ss.insertSheet("Users");
-    sheetUser.appendRow(["UserId", "UserName", "ActiveProject", "Role"]);
-    sheetUser.getRange("A1:D1").setFontWeight("bold").setBackground("#e2e8f0");
+    sheetUser.appendRow(["UserId", "UserName", "ActiveProject", "JobRole", "IsAdmin"]);
+    sheetUser.getRange("A1:E1").setFontWeight("bold").setBackground("#e2e8f0");
+  } else {
+    // Migrasi otomatis: jika header kolom D masih "Role" (skema lama), tambahkan kolom E
+    const headers = sheetUser.getRange(1, 1, 1, sheetUser.getLastColumn()).getValues()[0];
+    if (headers[3] === "Role" || (headers.length < 5 || headers[4] !== "IsAdmin")) {
+      sheetUser.getRange(1, 4).setValue("JobRole");
+      if (headers.length < 5) {
+        sheetUser.getRange(1, 5).setValue("IsAdmin");
+      }
+      // Migrasikan data: baris dengan Role="Admin" → JobRole="Pengawas", IsAdmin=TRUE
+      // Baris lain → IsAdmin=FALSE, JobRole dipertahankan
+      const lastRow = sheetUser.getLastRow();
+      if (lastRow > 1) {
+        for (let r = 2; r <= lastRow; r++) {
+          const oldRole = sheetUser.getRange(r, 4).getValue();
+          if (oldRole === "Admin") {
+            sheetUser.getRange(r, 4).setValue("Pengawas"); // JobRole
+            sheetUser.getRange(r, 5).setValue(true);       // IsAdmin
+          } else {
+            if (sheetUser.getRange(r, 5).getValue() === "") {
+              sheetUser.getRange(r, 5).setValue(false);
+            }
+          }
+        }
+        Logger.log("Users sheet migrated to new schema (JobRole + IsAdmin)");
+      }
+    }
   }
 }
 
@@ -1484,9 +1514,14 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
   return result;
 }
 
-const ROLE_PENGAWAS = "Pengawas";
-const ROLE_MANAJER = "Manajer Proyek";
-const ROLE_ADMIN = "Admin";
+// JobRole: menentukan alur transaksi (Pengawas = Petty Cash, Manajer = Kas Proyek)
+const JOB_PENGAWAS = "Pengawas";
+const JOB_MANAJER  = "Manajer";
+
+// Backward-compat alias (dipakai di beberapa tempat yang belum direfactor)
+const ROLE_PENGAWAS = JOB_PENGAWAS;
+const ROLE_MANAJER  = JOB_MANAJER;
+const ROLE_ADMIN    = "Admin"; // hanya untuk migrasi, jangan pakai untuk cek permission
 
 function getUserNameById(userId) {
   const sheet = getDbSpreadsheet().getSheetByName("Users");
@@ -1500,36 +1535,68 @@ function getUserNameById(userId) {
   return "";
 }
 
+// Kembalikan JobRole user (Pengawas / Manajer / null jika belum terdaftar)
+function getUserJobRole(userId) {
+  setupSheets();
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  if (!sheet) return null;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(userId)) {
+      return data[i][3] || null; // kolom D: JobRole
+    }
+  }
+  return null;
+}
+
+// Kembalikan true jika user memiliki IsAdmin = TRUE (kolom E)
+function isAdmin(userId) {
+  setupSheets();
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  if (!sheet) return false;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(userId)) {
+      const val = data[i][4]; // kolom E: IsAdmin
+      return val === true || String(val).toUpperCase() === "TRUE";
+    }
+  }
+  // Fallback bootstrap: jika belum ada di sheet tapi adalah ADMIN_TELEGRAM_ID
+  const adminId = getProperty("ADMIN_TELEGRAM_ID");
+  return adminId && String(userId) === String(adminId);
+}
+
+// getUserRole: tetap ada untuk backward-compat (ensureRegisteredUser, check_role endpoint)
+// Cek apakah user terdaftar di sheet. Jika bukan & adalah ADMIN_TELEGRAM_ID, bootstrap dulu.
 function getUserRole(userId) {
   setupSheets();
   const sheet = getDbSpreadsheet().getSheetByName("Users");
 
-  // Langkah 1: cari di sheet Users terlebih dahulu
+  // Langkah 1: cari di sheet Users
   if (sheet) {
     const data = sheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][0]) === String(userId)) {
-        return data[i][3] || null;
+        return data[i][3] || null; // kolom D: JobRole
       }
     }
   }
 
-  // Langkah 2: tidak ditemukan — cek apakah ini ADMIN_TELEGRAM_ID (bootstrap admin)
+  // Langkah 2: belum ada — bootstrap jika ADMIN_TELEGRAM_ID
   const adminId = getProperty("ADMIN_TELEGRAM_ID");
   if (adminId && String(userId) === String(adminId)) {
-    // Bootstrap: buat entri admin pertama otomatis di sheet Users
     if (sheet) {
       const firstProject = getAllProjects();
       sheet.appendRow([
         String(userId),
-        "Admin",
+        "Admin", // nama sementara, bisa diupdate
         firstProject.length > 0 ? firstProject[0] : "",
-        ROLE_ADMIN,
-        "Active"
+        JOB_PENGAWAS, // JobRole default owner = Pengawas
+        true          // IsAdmin = TRUE
       ]);
       Logger.log("Bootstrap admin created for Telegram ID: " + userId);
     }
-    return ROLE_ADMIN;
+    return JOB_PENGAWAS;
   }
 
   // Langkah 3: bukan siapa-siapa
@@ -1610,7 +1677,8 @@ function setUserActiveProject(userId, projectName) {
       return;
     }
   }
-  sheet.appendRow([userId, "User", projectName, "Staff"]);
+  // Buat baris baru dengan 5 kolom (JobRole=Pengawas default, IsAdmin=false)
+  sheet.appendRow([userId, "User", projectName, JOB_PENGAWAS, false]);
 }
 
 function getAllProjects() {
@@ -1625,28 +1693,28 @@ function getAllProjects() {
 }
 
 // /aturrole [telegram_id] [pengawas|manajer] — khusus Admin
+// Mengubah JobRole pengguna (tidak mempengaruhi IsAdmin)
 function cmdAturRole(chatId, userId, args) {
-  const role = getUserRole(userId);
-  if (role !== ROLE_ADMIN) {
-    sendMessage(chatId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat mengatur role pengguna.");
+  if (!isAdmin(userId)) {
+    sendMessage(chatId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat mengatur job role pengguna.");
     return;
   }
 
   if (!args || args.length < 2) {
-    sendMessage(chatId, "⚠️ *Format Salah.* Gunakan: `/aturrole [telegram_id] [pengawas|manajer]`\n*Contoh:* `/aturrole 123456789 manajer` ");
+    sendMessage(chatId, "⚠️ *Format Salah.*\nGunakan: `/aturrole [telegram_id] [pengawas|manajer]`\n*Contoh:* `/aturrole 123456789 manajer`");
     return;
   }
 
   const targetId = args[0];
   const roleInput = args[1].toLowerCase();
 
-  let newRole;
+  let newJobRole;
   if (roleInput === "pengawas") {
-    newRole = ROLE_PENGAWAS;
+    newJobRole = JOB_PENGAWAS;
   } else if (roleInput === "manajer") {
-    newRole = ROLE_MANAJER;
+    newJobRole = JOB_MANAJER;
   } else {
-    sendMessage(chatId, "⚠️ Role tidak dikenali. Gunakan `pengawas` atau `manajer`.");
+    sendMessage(chatId, "⚠️ JobRole tidak dikenali. Gunakan `pengawas` atau `manajer`.\n\n💡 Untuk mengatur hak Admin, gunakan `/setadmin [telegram_id] [on|off]`");
     return;
   }
 
@@ -1657,23 +1725,68 @@ function cmdAturRole(chatId, userId, args) {
 
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === String(targetId)) {
-      sheet.getRange(i + 1, 4).setValue(newRole); // Kolom D: Role
+      sheet.getRange(i + 1, 4).setValue(newJobRole); // Kolom D: JobRole
       found = true;
       break;
     }
   }
 
   if (!found) {
-    sheet.appendRow([targetId, "User", "", newRole]);
+    // Daftarkan user baru dengan JobRole yang diminta, IsAdmin=false
+    sheet.appendRow([targetId, "User", "", newJobRole, false]);
   }
 
-  sendMessage(chatId, `✅ *Role Berhasil Diatur!*\n━━━━━━━━━━━━━━━━━━━━━━\n👤 *Telegram ID:* \`${targetId}\`\n🏷️ *Role Baru:* *${newRole}*`);
+  sendMessage(chatId, `✅ *JobRole Berhasil Diubah!*\n━━━━━━━━━━━━━━━━━━━━━━\n👤 *Telegram ID:* \`${targetId}\`\n🏷️ *JobRole Baru:* *${newJobRole}*\n\n💡 Untuk memberi/mencabut hak Admin, gunakan:\n\`/setadmin ${targetId} on\` atau \`/setadmin ${targetId} off\``);
 }
 
-// /listuser — tampilkan semua user & role-nya, khusus Admin
+// /setadmin [telegram_id] [on|off] — khusus Admin
+// Mengubah IsAdmin tanpa mempengaruhi JobRole
+function cmdSetAdmin(chatId, userId, args) {
+  if (!isAdmin(userId)) {
+    sendMessage(chatId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat mengubah hak akses admin.");
+    return;
+  }
+
+  if (!args || args.length < 2) {
+    sendMessage(chatId, "⚠️ *Format Salah.*\nGunakan: `/setadmin [telegram_id] [on|off]`\n*Contoh:* `/setadmin 123456789 on`");
+    return;
+  }
+
+  const targetId = args[0];
+  const onOff = args[1].toLowerCase();
+
+  if (onOff !== "on" && onOff !== "off") {
+    sendMessage(chatId, "⚠️ Nilai tidak valid. Gunakan `on` atau `off`.");
+    return;
+  }
+
+  const newIsAdmin = (onOff === "on");
+
+  setupSheets();
+  const sheet = getDbSpreadsheet().getSheetByName("Users");
+  const data = sheet.getDataRange().getValues();
+  let found = false;
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(targetId)) {
+      sheet.getRange(i + 1, 5).setValue(newIsAdmin); // Kolom E: IsAdmin
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    // Daftarkan user baru (JobRole=Pengawas default) dengan IsAdmin sesuai perintah
+    sheet.appendRow([targetId, "User", "", JOB_PENGAWAS, newIsAdmin]);
+  }
+
+  const statusLabel = newIsAdmin ? "✅ *Admin (ON)*" : "❌ Bukan Admin (OFF)";
+  sendMessage(chatId, `🔑 *Hak Admin Berhasil Diubah!*\n━━━━━━━━━━━━━━━━━━━━━━\n👤 *Telegram ID:* \`${targetId}\`\nIsAdmin: ${statusLabel}`);
+}
+
+// /listuser — tampilkan semua user, job role, & status admin, khusus Admin
 function cmdListUser(chatId, userId) {
-  const role = getUserRole(userId);
-  if (role !== ROLE_ADMIN) {
+  if (!isAdmin(userId)) {
     sendMessage(chatId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat melihat daftar pengguna.");
     return;
   }
@@ -1687,13 +1800,15 @@ function cmdListUser(chatId, userId) {
     return;
   }
 
-  let text = "👥 *DAFTAR PENGGUNA & ROLE*\n━━━━━━━━━━━━━━━━━━━━━━\n";
+  let text = "👥 *DAFTAR PENGGUNA*\n━━━━━━━━━━━━━━━━━━━━━━\n";
   for (let i = 1; i < data.length; i++) {
-    const uid = data[i][0];
-    const uname = data[i][1] || "(tanpa nama)";
-    const urole = data[i][3] || ROLE_PENGAWAS;
-    text += `👤 \`${uid}\` — ${uname}\n   🏷️ ${urole}\n`;
+    const uid    = data[i][0];
+    const uname  = data[i][1] || "(tanpa nama)";
+    const ujob   = data[i][3] || JOB_PENGAWAS;
+    const uadmin = (data[i][4] === true || String(data[i][4]).toUpperCase() === "TRUE");
+    text += `👤 \`${uid}\` — ${uname}\n   💼 ${ujob}${uadmin ? "  🔑 Admin" : ""}\n`;
   }
+  text += `\n💡 Ubah JobRole: \`/aturrole [id] [pengawas|manajer]\`\n🔑 Ubah Admin: \`/setadmin [id] [on|off]\``;
 
   sendMessage(chatId, text);
 }
