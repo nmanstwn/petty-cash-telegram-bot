@@ -72,15 +72,28 @@ bot.onText(/\/(start|help)/, (msg) => {
   const helpText = `
 🤖 <b>SISTEM PETTY CASH AUTOMATION</b>
 ──────────────────────────────
-📌 <b>FORMAT PENCATATAN TRANSAKSI:</b>
-Ketik pesan transaksi atau kirim foto nota langsung:
-• <code>24juli 1.6jt bayar kontrakan tukang pek. pulomas</code>
-• <code>400rb kas pek. pulomas 1</code>
-• <code>10rb spidol</code>
+📌 <b>FORMAT PATEN PENCATATAN TRANSAKSI (SEMUA ROLE):</b>
 
+Format Standar Wajib:
+<code>[TanggalBulan] [Deskripsi] [Nominal] [Keterangan / Isi Nota]</code>
+
+💡 <b>Penjelasan Komponen:</b>
+• <b>TanggalBulan</b> : Tanggal & bulan (contoh: <code>02agustus</code>, <code>24juli</code>)
+• <b>Deskripsi</b> : Ringkasan transaksi / nomor nota (contoh: <code>beli nota 1</code>)
+• <b>Nominal</b> : Nilai angka pengeluaran (contoh: <code>150rb</code>, <code>1.6jt</code>, <code>50.000</code>)
+• <b>Keterangan</b> : Rincian item dari nota (contoh: <code>paku beton 5kg, meteran 1</code>)
+
+📝 <b>Contoh Pesan Transaksi:</b>
+• <code>02agustus beli nota 1 150rb paku beton 5kg, meteran 1</code>
+• <code>24juli bayar kontrakan 1.6jt kontrakan tukang pek. pulomas</code>
+• <code>05agustus beli nota 2 45rb spidol 2, kertas A4 1 rim</code>
+
+📷 <i>Catatan: Format paten ini berlaku untuk <u>semua role</u>, baik kirim pesan teks langsung maupun caption pada foto nota.</i>
+
+──────────────────────────────
 📊 <b>DAFTAR COMMAND:</b>
 
-👤 <b>Semua User:</b>
+👤 <b>Semua User (Pengawas, Manajer, Admin):</b>
 • <code>/saldo</code> — Cek Saldo Terkini Proyek Aktif
 • <code>/proyek</code> — Ganti / Pilih Proyek Aktif
 • <code>/riwayat</code> — Lihat 10 Transaksi Terakhir
@@ -97,9 +110,9 @@ Ketik pesan transaksi atau kirim foto nota langsung:
 • <code>/listuser</code> — Tampilkan Semua User & Role
 
 🏷️ <b>INFO ROLE:</b>
-• <b>Pengawas</b> — Catat transaksi Petty Cash, cek saldo
+• <b>Pengawas</b> — Catat transaksi Petty Cash, cek saldo & rekap
 • <b>Manajer</b> — Catat transaksi Kas Proyek + laporan gabungan & top-up
-• <b>IsAdmin ON</b> — Hak akses sistem penuh (bisa dipadukan dengan JobRole apapun)
+• <b>IsAdmin ON</b> — Hak akses sistem penuh
   `;
 
   bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });

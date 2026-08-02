@@ -224,7 +224,7 @@ function handleMessage(message) {
     if (/\d/.test(text)) {
       handleTextDraftMessage(userId, chatId, userName, text);
     } else {
-      sendMessage(chatId, "💡 *Petunjuk Pencatatan:* \n• Kirim foto nota belanja/transfer dengan caption\n• ATAU ketik teks langsung: `1.6 bayar kontrakan tukang` atau `50rb beli bensin`\nKetik /help untuk bantuan lengkap.");
+      sendMessage(chatId, "💡 *Petunjuk Pencatatan:* \n• Kirim foto nota belanja/transfer dengan caption\n• ATAU ketik teks langsung: `02agustus beli nota 1 150rb paku beton 5kg, meteran 1`\nKetik /help untuk bantuan lengkap.");
     }
   }
 }
@@ -235,24 +235,22 @@ function sendHelpMessage(chatId, userName) {
   const text = `📋 *PANDUAN BOT PETTY CASH AUTOMATION*\n` +
     `Halo *${userName}*! Berikut panduan penggunaan bot:\n\n` +
 
-    `⚡ *2 CARA MENCATAT TRANSAKSI:*\n\n` +
-    `1️⃣ *Kirim Foto (Nota / Bukti Transfer)*\n` +
-    `   Sertakan caption angka & keterangan. Contoh:\n` +
-    `   • \`1.6 bayar kontrakan tukang\` (Pengeluaran)\n` +
-    `   • \`24jul 400rb kas pek. pulomas 1\` (Uang Masuk)\n\n` +
-    `2️⃣ *Ketik Teks Langsung (Tanpa Foto)*\n` +
-    `   • \`1.6 bayar kontrakan tukang pek. pulomas\`\n` +
-    `   • \`150rb beli semen 3 sak\`\n` +
-    `   • \`400rb kas main\`\n\n` +
-
-    `✨ *FITUR PINTAR OTOMATIS:*\n` +
-    `• 💰 *Format Angka*: \`1.6\`/\`2.1\` (Juta), \`400rb\`, \`50k\`, \`250ribu\`\n` +
-    `• 📥 *Default Uang Masuk*: Tanpa kata \`bayar\`/\`beli\`/\`sewa\` → otomatis Uang Masuk\n` +
-    `• 📅 *Tanggal Historis*: Tulis \`24jul\`, \`24/07/2026\` di teks/caption\n` +
-    `• ⚡ *Tanpa Approval*: Transaksi langsung terdaftar instan!\n\n` +
+    `📌 *FORMAT PATEN PENCATATAN TRANSAKSI (SEMUA ROLE):*\n\n` +
+    `Format Standar Wajib:\n` +
+    `\`[TanggalBulan] [Deskripsi] [Nominal] [Keterangan / Isi Nota]\` \n\n` +
+    `💡 *Penjelasan Komponen:*\n` +
+    `• *TanggalBulan* : Tanggal & bulan (contoh: \`02agustus\`, \`24juli\`)\n` +
+    `• *Deskripsi* : Ringkasan / nomor nota (contoh: \`beli nota 1\`)\n` +
+    `• *Nominal* : Nilai angka pengeluaran (contoh: \`150rb\`, \`1.6jt\`, \`50.000\`)\n` +
+    `• *Keterangan* : Rincian item dari nota (contoh: \`paku beton 5kg, meteran 1\`)\n\n` +
+    `📝 *Contoh Pesan Transaksi:*\n` +
+    `• \`02agustus beli nota 1 150rb paku beton 5kg, meteran 1\`\n` +
+    `• \`24juli bayar kontrakan 1.6jt kontrakan tukang pek. pulomas\`\n` +
+    `• \`05agustus beli nota 2 45rb spidol 2, kertas A4 1 rim\`\n\n` +
+    `📷 _Catatan: Format paten ini berlaku untuk semua role, baik kirim pesan teks maupun caption foto nota._\n\n` +
 
     `📌 *DAFTAR PERINTAH (/COMMANDS):*\n` +
-    `👤 *Semua User:*\n` +
+    `👤 *Semua User (Pengawas, Manajer, Admin):*\n` +
     `• /saldo — Cek Saldo Terkini Proyek Aktif\n` +
     `• /proyek — Ganti / Pilih Proyek Aktif\n` +
     `• /riwayat — Lihat 10 Transaksi Terakhir\n` +
@@ -266,7 +264,6 @@ function sendHelpMessage(chatId, userName) {
     `• /aturrole [telegram_id] [pengawas|manajer] — Atur JobRole Pengguna\n` +
     `• /setadmin [telegram_id] [on|off] — Beri/Cabut Hak Admin\n` +
     `• /listuser — Tampilkan Semua Pengguna\n\n` +
-
     `🏷️ *INFO ROLE:*\n` +
     `• *Pengawas* — Catat transaksi Petty Cash, cek saldo, lihat riwayat\n` +
     `• *Manajer* — Transaksi Kas Proyek + laporan gabungan & top-up\n` +
