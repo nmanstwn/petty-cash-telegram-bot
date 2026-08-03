@@ -2360,6 +2360,7 @@ function DEBUG_cekToken() {
 // Cara pakai: pilih fungsi ini di dropdown Apps Script Editor, klik Run.
 // ==============================================================================
 function FIX_reparseOldTransactions() {
+  setupSheets();
   const sheet = getDbSpreadsheet().getSheetByName("Transactions");
   if (!sheet) {
     Logger.log("Sheet Transactions tidak ditemukan.");
@@ -2410,7 +2411,11 @@ function FIX_reparseOldTransactions() {
 
   const summary = `Selesai! ${fixedCount} baris diperbaiki, ${skippedCount} baris dilewati (sudah rapi).`;
   Logger.log(summary);
-  SpreadsheetApp.getUi().alert(summary);
+  try {
+    SpreadsheetApp.getUi().alert(summary);
+  } catch (e) {
+    // getUi() tidak didukung pada standalone script, cukup gunakan Logger.log
+  }
 }
 
 // Helper: hapus prefix tanggal (termasuk typo umum), lalu pisahkan
