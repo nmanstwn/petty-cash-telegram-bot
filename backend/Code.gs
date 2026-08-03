@@ -2353,3 +2353,102 @@ function DEBUG_cekToken() {
   Logger.log("TELEGRAM_BOT_TOKEN (Apps Script): " + token);
   Logger.log("ADMIN_TELEGRAM_ID (Apps Script): " + adminId);
 }
+
+// ==============================================================================
+// SCRIPT SEKALI-JALAN: Perbaiki data transaksi lama yang Deskripsinya masih
+// tercampur dengan Keterangan (sebelum parser Format Paten diterapkan).
+// Cara pakai: pilih fungsi ini di dropdown Apps Script Editor, klik Run.
+// ==============================================================================
+function FIX_reparseOldTransactions() {
+  const sheet = getDbSpreadsheet().getSheetByName("Transactions");
+  if (!sheet) {
+    Logger.log("Sheet Transactions tidak ditemukan.");
+    return;
+  }
+
+  const data = sheet.getDataRange().getValues();
+  let fixedCount = 0;
+  let skippedCount = 0;
+
+  // Kolom: A=ID(0) ... I=Merchant(8) ... Q=Note(16)
+  for (let i = 1; i < data.length; i++) {
+    const txId = data[i][0];
+    const merchant = String(data[i][8] || "");
+
+    if (!merchant) {
+      skippedCount++;
+      continue;
+    }
+
+    // Deteksi apakah Merchant kemungkinan masih ada pola tanggal nyangkut di depan
+    // (contoh: "2agutus Nota 3 Benang 6bh...", "24juli bayar kontrakan...")
+    const looksLikeHasDatePrefix = /^\d{1,2}\s*[a-z]{3,9}\b/i.test(merchant.trim());
+
+    if (!looksLikeHasDatePrefix) {
+      skippedCount++;
+      continue; // Sudah rapi, lewati
+    }
+
+    // Re-parse pakai parser Format Paten yang baru.
+    // Catatan: karena Nominal aslinya sudah tersimpan terpisah di kolom Amount,
+    // kita re-parse Merchant SAJA sebagai teks gabungan "Deskripsi ... Keterangan"
+    // tanpa nominal di dalamnya. Jadi dipisah manual di sini: kata-kata awal (2-3 kata
+    // pertama sebelum kata benda/rincian item) = Deskripsi, sisanya = Keterangan.
+    const reparsed = FIX_splitMerchantAfterDateStrip(merchant);
+
+    if (reparsed.deskripsi) {
+      sheet.getRange(i + 1, 9).setValue(reparsed.deskripsi); // Kolom I: Merchant
+      if (reparsed.keterangan) {
+        sheet.getRange(i + 1, 17).setValue(reparsed.keterangan); // Kolom Q: Note
+      }
+      fixedCount++;
+      Logger.log(`Fixed ${txId}: Deskripsi="${reparsed.deskripsi}" | Keterangan="${reparsed.keterangan}"`);
+    } else {
+      skippedCount++;
+    }
+  }
+
+  const summary = `Selesai! ${fixedCount} baris diperbaiki, ${skippedCount} baris dilewati (sudah rapi).`;
+  Logger.log(summary);
+  SpreadsheetApp.getUi().alert(summary);
+}
+
+// Helper: hapus prefix tanggal (termasuk typo umum), lalu pisahkan
+// kata pertama "Nota X" / "beli X" dkk sebagai Deskripsi, sisanya Keterangan.
+function FIX_splitMerchantAfterDateStrip(merchant) {
+  let text = merchant.trim();
+
+  // 1. Hapus prefix tanggal di awal (pakai parser tanggal yang sudah ada, plus toleransi typo)
+  const dateRes = parseDateFromText(text);
+  if (dateRes.matchedSubstring) {
+    const idx = text.toLowerCase().indexOf(dateRes.matchedSubstring.toLowerCase());
+    if (idx >= 0 && idx <= 2) {
+      text = text.slice(idx + dateRes.matchedSubstring.length).trim();
+    }
+  } else {
+    // Fallback: kalau parseDateFromText gagal (typo parah, misal "2agutus"),
+    // paksa hapus pola "angka+huruf" pertama di awal teks secara manual
+    text = text.replace(/^\d{1,2}\s*[a-z]{3,9}\b\s*/i, "").trim();
+  }
+
+  if (!text) return { deskripsi: "", keterangan: "" };
+
+  // 2. Pisahkan "Deskripsi" (2 kata pertama, biasanya "Nota X" / "Beli X" / "Bayar X")
+  //    dari "Keterangan" (sisanya, rincian item)
+  const words = text.split(/\s+/);
+  let deskripsi = "";
+  let keterangan = "";
+
+  if (words.length <= 2) {
+    // Teks pendek, semuanya jadi Deskripsi saja
+    deskripsi = text;
+  } else {
+    deskripsi = words.slice(0, 2).join(" ");
+    keterangan = words.slice(2).join(" ");
+  }
+
+  return {
+    deskripsi: toTitleCase(deskripsi),
+    keterangan: keterangan
+  };
+}
