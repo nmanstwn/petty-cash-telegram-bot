@@ -333,51 +333,14 @@ function handlePhotoMessage(message) {
     let parsedDate = "";
     let parsedNominal = 0;
     let merchantText = caption ? caption : "Bukti Transfer / Nota";
+    let parsedKeterangan = "";
 
     if (caption) {
-      // 1. Ekstrak Tanggal jika ditulis di caption (contoh: 24 Jul 2026 / 15/05/2026 / 2026-07-24)
-      const dateRes = parseDateFromText(caption);
-      parsedDate = dateRes.dateStr;
-
-      let textForAmount = caption;
-      if (dateRes.matchedSubstring) {
-        textForAmount = caption.replace(dateRes.matchedSubstring, "").trim();
-      }
-
-      // 2. Ekstrak Nominal Angka (Mendukung Singkatan Desimal: 1.6, 2.1, 0.5, 12.5, 50rb, 250k, 1.5jt)
-      const allMatches = textForAmount.match(/(?:rp\.?|idr)?\s*[\d.,]+\s*(?:jt|juta|rb|ribu|k\b|m|milyar|miliar)?/gi);
-      let rawNumStr = "";
-
-      if (allMatches) {
-        let maxVal = 0;
-        for (let m of allMatches) {
-          const parsed = parseAmountString(m);
-          if (parsed > maxVal) {
-            maxVal = parsed;
-            rawNumStr = m;
-          }
-        }
-        if (maxVal > 0) {
-          parsedNominal = maxVal;
-        }
-      }
-
-      // 3. Ekstrak Remarks / Keterangan
-      let cleanRemarks = textForAmount
-        .replace(/uang masuk|uang keluar|topup|top up|debit|reimburse|masuk|kredit|pengeluaran/gi, "")
-        .replace(/\b(?:bayar|beli|pembelian|biaya|ongkir|sewa)\b/gi, "");
-
-      if (rawNumStr) {
-        cleanRemarks = cleanRemarks.replace(rawNumStr, "");
-      }
-
-      cleanRemarks = cleanRemarks.replace(/^[-_\s:]+|[-_\s:]+$/g, "").trim();
-
-      if (cleanRemarks.length > 0) {
-        merchantText = toTitleCase(cleanRemarks);
-      } else if (caption) {
-        merchantText = toTitleCase(caption);
-      }
+      const parsed = parsePatenFormat(caption);
+      parsedDate = parsed.dateStr;
+      parsedNominal = parsed.amount;
+      merchantText = parsed.deskripsi || toTitleCase(caption);
+      parsedKeterangan = parsed.keterangan;
     }
 
     // 3. Buat Draft Transaksi Seketika (Tanpa Tunggu AI)
@@ -395,6 +358,7 @@ function handlePhotoMessage(message) {
       date: parsedDate ? parsedDate : getTodayDate(),
       amount: parsedNominal,
       merchant: toTitleCase(merchantText),
+      note: parsedKeterangan,
       category: txCategory,
       refNo: "-",
       type: txType,
@@ -419,50 +383,7 @@ function handleTextDraftMessage(userId, chatId, userName, text) {
   const txType = detected.type;
   const txCategory = detected.category;
 
-  let parsedDate = "";
-  let parsedNominal = 0;
-  let merchantText = text;
-
-  const dateRes = parseDateFromText(text);
-  parsedDate = dateRes.dateStr;
-
-  let textForAmount = text;
-  if (dateRes.matchedSubstring) {
-    textForAmount = text.replace(dateRes.matchedSubstring, "").trim();
-  }
-
-  const allMatches = textForAmount.match(/(?:rp\.?|idr)?\s*[\d.,]+\s*(?:jt|juta|rb|ribu|k\b|m|milyar|miliar)?/gi);
-  let rawNumStr = "";
-
-  if (allMatches) {
-    let maxVal = 0;
-    for (let m of allMatches) {
-      const parsed = parseAmountString(m);
-      if (parsed > maxVal) {
-        maxVal = parsed;
-        rawNumStr = m;
-      }
-    }
-    if (maxVal > 0) {
-      parsedNominal = maxVal;
-    }
-  }
-
-  let cleanRemarks = textForAmount
-    .replace(/uang masuk|uang keluar|topup|top up|debit|reimburse|masuk|kredit|pengeluaran/gi, "")
-    .replace(/\b(?:bayar|beli|pembelian|biaya|ongkir|sewa)\b/gi, "");
-
-  if (rawNumStr) {
-    cleanRemarks = cleanRemarks.replace(rawNumStr, "");
-  }
-
-  cleanRemarks = cleanRemarks.replace(/^[-_\s:]+|[-_\s:]+$/g, "").trim();
-
-  if (cleanRemarks.length > 0) {
-    merchantText = toTitleCase(cleanRemarks);
-  } else {
-    merchantText = toTitleCase(text);
-  }
+  const parsed = parsePatenFormat(text);
 
   const activeProject = getUserActiveProject(userId) || "Proyek Utama";
   const userJobRole = getUserJobRole(userId) || JOB_PENGAWAS;
@@ -475,9 +396,10 @@ function handleTextDraftMessage(userId, chatId, userName, text) {
     jobRole: userJobRole,
     chatId: chatId,
     project: activeProject,
-    date: parsedDate ? parsedDate : getTodayDate(),
-    amount: parsedNominal,
-    merchant: merchantText,
+    date: parsed.dateStr ? parsed.dateStr : getTodayDate(),
+    amount: parsed.amount,
+    merchant: parsed.deskripsi || toTitleCase(text),
+    note: parsed.keterangan,
     category: txCategory,
     refNo: "-",
     type: txType,
@@ -505,7 +427,8 @@ function sendTransactionPreviewMessage(chatId, txId, messageId = null) {
     `• *Jalur Kas:* 💼 *${jobRoleLabel}*\n` +
     `• *Tanggal:* ${formattedDate}\n` +
     `• *Nominal:* Rp ${formatRupiah(tx.amount)}\n` +
-    `• *Keterangan:* ${tx.merchant}\n` +
+    `• *Deskripsi:* ${tx.merchant}\n` +
+    (tx.note ? `• *Keterangan:* ${tx.note}\n` : "") +
     `• *Kategori:* 🏷️ *${tx.category}*\n` +
     `• *Proyek:* 🏗️ *${tx.project}*\n` +
     `━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -1042,7 +965,7 @@ function generatePettyCashHTMLReportContent(projectName, period, isForBrowser = 
     if (i < txs.length) {
       const t = txs[i];
       let mat = "-", upah = "-", alat = "-", atk = "-", akom = "-", lain = "-", debit = "-", saldo = "-";
-      const note = t.refNo && t.refNo !== "-" ? t.refNo : (t.rejectReason || "");
+      const note = t.note ? t.note : (t.refNo && t.refNo !== "-" ? t.refNo : (t.rejectReason || ""));
 
       if (t.type === "Debit") {
         runningBalance += t.amount;
@@ -1246,8 +1169,8 @@ function setupSheets() {
   let sheetTx = ss.getSheetByName("Transactions");
   if (!sheetTx) {
     sheetTx = ss.insertSheet("Transactions");
-    sheetTx.appendRow(["ID", "Timestamp", "UserId", "UserName", "JobRole", "Project", "Date", "Amount", "Merchant", "Category", "RefNo", "Type", "Status", "ApprovedBy", "RejectReason", "PhotoUrl"]);
-    sheetTx.getRange("A1:P1").setFontWeight("bold").setBackground("#e2e8f0");
+    sheetTx.appendRow(["ID", "Timestamp", "UserId", "UserName", "JobRole", "Project", "Date", "Amount", "Merchant", "Category", "RefNo", "Type", "Status", "ApprovedBy", "RejectReason", "PhotoUrl", "Note"]);
+    sheetTx.getRange("A1:Q1").setFontWeight("bold").setBackground("#e2e8f0");
   } else {
     const headers = sheetTx.getRange(1, 1, 1, sheetTx.getLastColumn()).getValues()[0];
     if (headers.length < 5 || headers[4] !== "JobRole") {
@@ -1259,6 +1182,13 @@ function setupSheets() {
         sheetTx.getRange(2, 5, lastRow - 1, 1).setValue("Pengawas");
       }
       Logger.log("Transactions sheet migrated: JobRole added at Column E");
+    }
+
+    // Migrasi tambahan: pastikan kolom Note (Keterangan) ada di kolom Q
+    const headersNote = sheetTx.getRange(1, 1, 1, sheetTx.getLastColumn()).getValues()[0];
+    if (headersNote.length < 17 || headersNote[16] !== "Note") {
+      sheetTx.getRange(1, 17).setValue("Note").setFontWeight("bold").setBackground("#e2e8f0");
+      Logger.log("Transactions sheet migrated: Note column added at Column Q");
     }
   }
 
@@ -1337,7 +1267,7 @@ function saveTransactionDraft(tx) {
   setupSheets();
   const sheet = getDbSpreadsheet().getSheetByName("Transactions");
   sheet.appendRow([
-    tx.id, new Date(), tx.userId, tx.userName, tx.jobRole, tx.project, tx.date, tx.amount, tx.merchant, tx.category, tx.refNo, tx.type, tx.status, "", "", tx.photoUrl
+    tx.id, new Date(), tx.userId, tx.userName, tx.jobRole, tx.project, tx.date, tx.amount, tx.merchant, tx.category, tx.refNo, tx.type, tx.status, "", "", tx.photoUrl, tx.note || ""
   ]);
 }
 
@@ -1386,6 +1316,7 @@ function updateTransactionField(txId, field, newValue) {
     else if (fLower === "date") cached.date = newValue;
     else if (fLower === "photourl") cached.photoUrl = newValue;
     else if (fLower === "jobrole") cached.jobRole = newValue;
+    else if (fLower === "note") cached.note = newValue;
     setCachedDraft(txId, cached);
   }
 
@@ -1398,7 +1329,8 @@ function updateTransactionField(txId, field, newValue) {
     category: 10,
     refno: 11,
     type: 12,
-    photourl: 16
+    photourl: 16,
+    note: 17
   };
   const colIdx = colMap[fLower];
   if (!colIdx) return;
@@ -1438,6 +1370,7 @@ function getTransactionById(txId) {
         type: data[i][11],
         status: data[i][12],
         photoUrl: data[i][15] || "",
+        note: data[i][16] || "",
         chatId: data[i][2]
       };
     }
@@ -1561,7 +1494,8 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
       refNo: data[i][10],
       type: data[i][11],
       status: data[i][12],
-      photoUrl: data[i][15] || ""
+      photoUrl: data[i][15] || "",
+      note: data[i][16] || ""
     });
   }
   return result;
@@ -2187,6 +2121,75 @@ function parseAmountString(str) {
   return Math.round(val * multiplier);
 }
 
+// Parser Format Paten: [TanggalBulan] [Deskripsi] [Nominal] [Keterangan]
+function parsePatenFormat(text) {
+  if (!text) return { dateStr: "", deskripsi: "", amount: 0, keterangan: "" };
+
+  let remaining = text.trim();
+  let dateStr = "";
+
+  // 1. Ekstrak TanggalBulan — HARUS di awal teks sesuai format paten
+  const dateRes = parseDateFromText(remaining);
+  if (dateRes.matchedSubstring) {
+    const idx = remaining.toLowerCase().indexOf(dateRes.matchedSubstring.toLowerCase());
+    if (idx >= 0 && idx <= 2) { // toleransi kalau ada spasi tipis di depan
+      dateStr = dateRes.dateStr;
+      remaining = remaining.slice(idx + dateRes.matchedSubstring.length).trim();
+    }
+  }
+
+  // 2. Cari token NOMINAL pertama di sisa teks — inilah pemisah Deskripsi | Keterangan
+  const amountRegex = /(?:rp\.?|idr)?\s*[\d.,]+\s*(?:jt|juta|rb|ribu|k\b|m\b|milyar|miliar)?/gi;
+  const allMatches = [...remaining.matchAll(amountRegex)];
+
+  let amountMatch = null;
+  if (allMatches.length > 0) {
+    // Utamakan match yang punya multiplier/unit eksplisit ATAU nominal >= 100
+    for (const m of allMatches) {
+      const str = m[0];
+      const hasUnit = /(?:rp|idr|jt|juta|rb|ribu|k\b|m\b|milyar|miliar)/i.test(str);
+      const parsed = parseAmountString(str);
+      if (hasUnit || parsed >= 100) {
+        amountMatch = m;
+        break;
+      }
+    }
+    if (!amountMatch) {
+      for (const m of allMatches) {
+        if (parseAmountString(m[0]) > 0) {
+          amountMatch = m;
+          break;
+        }
+      }
+    }
+    if (!amountMatch) {
+      amountMatch = allMatches[0];
+    }
+  }
+
+  let deskripsi = remaining;
+  let keterangan = "";
+  let amount = 0;
+
+  if (amountMatch) {
+    const matchedAmountStr = amountMatch[0];
+    const matchIdx = amountMatch.index;
+
+    deskripsi = remaining.slice(0, matchIdx).trim();
+    keterangan = remaining.slice(matchIdx + matchedAmountStr.length).trim();
+    keterangan = keterangan.replace(/^[-_,\s:]+/, "").trim();
+
+    amount = parseAmountString(matchedAmountStr);
+  }
+
+  return {
+    dateStr: dateStr,
+    deskripsi: toTitleCase(deskripsi),
+    amount: amount,
+    keterangan: keterangan
+  };
+}
+
 function parseDateFromText(text) {
   if (!text) return { dateStr: "", matchedSubstring: "" };
   
@@ -2212,7 +2215,7 @@ function parseDateFromText(text) {
     may: "05", mei: "05",
     jun: "06", juni: "06",
     jul: "07", juli: "07",
-    aug: "08", agustus: "08", ags: "08",
+    aug: "08", agu: "08", agustus: "08", ags: "08",
     sep: "09", september: "09",
     oct: "10", oktober: "10", okt: "10",
     nov: "11", november: "11",
