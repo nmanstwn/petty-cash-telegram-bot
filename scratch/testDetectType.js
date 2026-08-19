@@ -1,27 +1,30 @@
 function detectTransactionTypeAndCategory(text) {
   const tLower = (text || "").toLowerCase();
-  
-  const debitKeywords = ["debit", "uang masuk", "topup", "top up", "reimburse", "masuk", "terima", "terima uang", "setoran"];
-  let isDebit = false;
-  for (let kw of debitKeywords) {
+
+  const incomeKeywords = [
+    "uang masuk", "topup", "top up", "top-up", "reimburse", "terima transfer",
+    "kas masuk", "dana masuk", "transfer masuk", "tf masuk", "masuk kas", "terima kas"
+  ];
+
+  let isIncome = false;
+  for (let kw of incomeKeywords) {
     if (tLower.includes(kw)) {
-      isDebit = true;
+      isIncome = true;
       break;
     }
   }
 
-  if (isDebit) {
+  if (isIncome) {
     return { type: "Debit", category: "Uang Masuk / TopUp" };
   }
 
   let category = "Lain-Lain";
-
   const catRules = [
-    { cat: "Upah", keywords: ["tukang", "kontrakan tukang", "gaji", "upah", "honor", "lembur", "mandor", "kasbon tukang"] },
-    { cat: "Material", keywords: ["semen", "pasir", "batu", "cat", "paku", "baut", "besi", "kayu", "pipa", "kabel", "keramik", "bata", "triplek", "material", "bahan"] },
-    { cat: "Alat", keywords: ["sewa", "rental", "rent", "bor", "cangkul", "helm", "rompi", "mesin", "alat", "genset", "molen"] },
-    { cat: "ATK", keywords: ["kertas", "pena", "pulpen", "spidol", "materai", "print", "fotocopy", "buku", "atk", "tinta"] },
-    { cat: "Akomodasi", keywords: ["bensin", "pertalite", "pertamax", "solar", "tol", "parkir", "makan", "minum", "konsumsi", "nasi", "ojek", "grab", "gojek", "travel", "tiket", "makanan"] }
+    { cat: "Akomodasi", keywords: ["kontrakan", "sewa rumah", "sewa mess", "bensin", "pertalite", "pertamax", "solar", "tol", "parkir", "makan", "minum", "konsumsi", "nasi", "ojek", "grab", "gojek", "travel", "tiket", "makanan"] },
+    { cat: "Upah", keywords: ["tukang", "gaji", "upah", "honor", "lembur", "mandor", "kasbon"] },
+    { cat: "Material", keywords: ["semen", "pasir", "batu", "cat", "paku", "baut", "besi", "kayu", "pipa", "kabel", "keramik", "bata", "triplek", "material", "bahan", "benang", "colokan", "dinabolt", "kawat"] },
+    { cat: "Alat", keywords: ["sewa alat", "rental", "rent", "bor", "cangkul", "helm", "rompi", "mesin", "genset", "molen"] },
+    { cat: "ATK", keywords: ["kertas", "pena", "pulpen", "spidol", "materai", "print", "fotocopy", "buku", "atk", "tinta"] }
   ];
 
   for (let rule of catRules) {
@@ -42,4 +45,5 @@ console.log("Test 2:", detectTransactionTypeAndCategory("150rb beli semen 3 sak"
 console.log("Test 3:", detectTransactionTypeAndCategory("50rb beli bensin pertalite"));
 console.log("Test 4:", detectTransactionTypeAndCategory("100rb sewa bor"));
 console.log("Test 5:", detectTransactionTypeAndCategory("25rb fotocopy & print"));
-console.log("Test 6:", detectTransactionTypeAndCategory("2.1jt topup kas utama"));
+
+module.exports = { detectTransactionTypeAndCategory };

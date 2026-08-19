@@ -216,6 +216,10 @@ function handleMessage(message) {
       case "/listuser":
         cmdListUser(chatId, userId);
         break;
+      case "/hapus":
+      case "/hapustransaksi":
+        cmdHapusTransaksi(chatId, userId, args);
+        break;
       default:
         sendMessage(chatId, "⚠️ Perintah tidak dikenali. Ketik /help untuk melihat daftar perintah.");
     }
@@ -263,7 +267,8 @@ function sendHelpMessage(chatId, userName) {
     `• /tambahproyek [Nama Proyek] — Buat Proyek Baru\n` +
     `• /aturrole [telegram_id] [pengawas|manajer] — Atur JobRole Pengguna\n` +
     `• /setadmin [telegram_id] [on|off] — Beri/Cabut Hak Admin\n` +
-    `• /listuser — Tampilkan Semua Pengguna\n\n` +
+    `• /listuser — Tampilkan Semua Pengguna\n` +
+    `• /hapus [TX-ID] — Hapus Transaksi Permanen (dengan konfirmasi)\n\n` +
     `🏷️ *INFO ROLE:*\n` +
     `• *Pengawas* — Catat transaksi Petty Cash, cek saldo, lihat riwayat\n` +
     `• *Manajer* — Transaksi Kas Proyek + laporan gabungan & top-up\n` +
@@ -335,16 +340,24 @@ function handlePhotoMessage(message) {
     let merchantText = caption ? caption : "Bukti Transfer / Nota";
     let parsedKeterangan = "";
 
+    const activeProjectForCaption = getUserActiveProject(userId) || "Proyek Utama";
+
     if (caption) {
       const parsed = parsePatenFormat(caption);
       parsedDate = parsed.dateStr;
       parsedNominal = parsed.amount;
       merchantText = parsed.deskripsi || toTitleCase(caption);
       parsedKeterangan = parsed.keterangan;
+
+      // Auto-lanjutkan nomor nota kalau Deskripsi cuma "Nota" tanpa angka
+      if (/^nota$/i.test(merchantText.trim())) {
+        const nextNum = getNextNotaNumber(activeProjectForCaption);
+        merchantText = `Nota ${nextNum}`;
+      }
     }
 
     // 3. Buat Draft Transaksi Seketika (Tanpa Tunggu AI)
-    const activeProject = getUserActiveProject(userId) || "Proyek Utama";
+    const activeProject = activeProjectForCaption;
     const userJobRole = getUserJobRole(userId) || JOB_PENGAWAS;
     const txId = "TX-" + Math.floor(100000 + Math.random() * 900000);
 
@@ -389,6 +402,13 @@ function handleTextDraftMessage(userId, chatId, userName, text) {
   const userJobRole = getUserJobRole(userId) || JOB_PENGAWAS;
   const txId = "TX-" + Math.floor(100000 + Math.random() * 900000);
 
+  // Auto-lanjutkan nomor nota kalau Deskripsi cuma "Nota" tanpa angka
+  let finalDeskripsi = parsed.deskripsi || toTitleCase(text);
+  if (/^nota$/i.test(finalDeskripsi.trim())) {
+    const nextNum = getNextNotaNumber(activeProject);
+    finalDeskripsi = `Nota ${nextNum}`;
+  }
+
   saveTransactionDraft({
     id: txId,
     userId: userId,
@@ -398,7 +418,7 @@ function handleTextDraftMessage(userId, chatId, userName, text) {
     project: activeProject,
     date: parsed.dateStr ? parsed.dateStr : getTodayDate(),
     amount: parsed.amount,
-    merchant: parsed.deskripsi || toTitleCase(text),
+    merchant: finalDeskripsi,
     note: parsed.keterangan,
     category: txCategory,
     refNo: "-",
@@ -662,6 +682,25 @@ function handleCallbackQuery(cb) {
     const txId = data.replace("reject_", "");
     setUserState(userId, { action: "REJECT_REASON_INPUT", txId: txId, messageId: messageId });
     sendMessage(chatId, `❌ Silakan ketik *alasan penolakan (reject)* untuk transaksi \`${txId}\`:`);
+
+  } else if (data.startsWith("confirmdelete_")) {
+    const txId = data.replace("confirmdelete_", "");
+
+    if (!isAdmin(userId)) {
+      editMessageText(chatId, messageId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat menghapus transaksi.");
+      return;
+    }
+
+    const success = deleteTransactionPermanently(txId);
+    if (success) {
+      editMessageText(chatId, messageId, `✅ *Transaksi \`${txId}\` berhasil dihapus permanen dari spreadsheet.*`);
+    } else {
+      editMessageText(chatId, messageId, `⚠️ Gagal menghapus. Transaksi \`${txId}\` tidak ditemukan (mungkin sudah dihapus sebelumnya).`);
+    }
+
+  } else if (data.startsWith("canceldelete_")) {
+    const txId = data.replace("canceldelete_", "");
+    editMessageText(chatId, messageId, `↩️ *Penghapusan transaksi \`${txId}\` dibatalkan.* Data tetap tersimpan.`);
   }
 }
 
@@ -1501,6 +1540,28 @@ function getProjectTransactions(projectName, startDate = null, endDate = null) {
   return result;
 }
 
+// Cari nomor "Nota X" terakhir yang dipakai di proyek tertentu, kembalikan nomor selanjutnya
+function getNextNotaNumber(projectName) {
+  const sheet = getDbSpreadsheet().getSheetByName("Transactions");
+  if (!sheet) return 1;
+
+  const data = sheet.getDataRange().getValues();
+  let maxNum = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][5] !== projectName) continue; // Kolom F: Project
+
+    const merchant = String(data[i][8] || ""); // Kolom I: Merchant
+    const match = merchant.match(/^nota\s+(\d+)$/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum) maxNum = num;
+    }
+  }
+
+  return maxNum + 1;
+}
+
 // JobRole: menentukan alur transaksi (Pengawas = Petty Cash, Manajer = Kas Proyek)
 const JOB_PENGAWAS = "Pengawas";
 const JOB_MANAJER  = "Manajer";
@@ -1771,6 +1832,73 @@ function cmdSetAdmin(chatId, userId, args) {
 
   const statusLabel = newIsAdmin ? "✅ *Admin (ON)*" : "❌ Bukan Admin (OFF)";
   sendMessage(chatId, `🔑 *Hak Admin Berhasil Diubah!*\n━━━━━━━━━━━━━━━━━━━━━━\n👤 *Telegram ID:* \`${targetId}\`\nIsAdmin: ${statusLabel}`);
+}
+
+// /hapus [TX-ID] — khusus Admin, HAPUS PERMANEN transaksi dari spreadsheet
+function cmdHapusTransaksi(chatId, userId, args) {
+  if (!isAdmin(userId)) {
+    sendMessage(chatId, "⛔ *Akses Ditolak.* Hanya Admin yang dapat menghapus transaksi.");
+    return;
+  }
+
+  if (!args || args.length < 1) {
+    sendMessage(chatId, "⚠️ *Format Salah.*\nGunakan: `/hapus [TX-ID]`\n*Contoh:* `/hapus TX-488045`\n\n💡 Lihat TX-ID di /riwayat atau di pesan konfirmasi transaksi.");
+    return;
+  }
+
+  const txId = (args.find(a => a.toUpperCase().startsWith("TX-")) || args[args.length - 1]).trim().toUpperCase();
+  const tx = getTransactionById(txId);
+
+  if (!tx) {
+    sendMessage(chatId, `⚠️ Transaksi dengan ID \`${txId}\` tidak ditemukan di spreadsheet.`);
+    return;
+  }
+
+  const formattedDate = formatDisplayDate(tx.date);
+  const typeLabel = tx.type === "Debit" ? "📥 Uang Masuk" : "📤 Pengeluaran";
+
+  const confirmMsg = `🗑️ *KONFIRMASI HAPUS TRANSAKSI*\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `⚠️ *Tindakan ini akan MENGHAPUS PERMANEN baris ini dari Google Sheets. Tidak bisa dibatalkan!*\n\n` +
+    `• *ID:* \`${tx.id}\`\n` +
+    `• *Tipe:* ${typeLabel}\n` +
+    `• *Tanggal:* ${formattedDate}\n` +
+    `• *Nominal:* Rp ${formatRupiah(tx.amount)}\n` +
+    `• *Deskripsi:* ${tx.merchant}\n` +
+    `• *Proyek:* 🏗️ ${tx.project}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Yakin ingin menghapus transaksi ini?`;
+
+  const confirmKeyboard = {
+    "inline_keyboard": [
+      [
+        { "text": "🗑️ Ya, Hapus Permanen", "callback_data": `confirmdelete_${txId}` },
+        { "text": "❌ Batal", "callback_data": `canceldelete_${txId}` }
+      ]
+    ]
+  };
+
+  sendMessageWithKeyboard(chatId, confirmMsg, confirmKeyboard);
+}
+
+// Helper: hapus baris transaksi secara permanen dari sheet Transactions berdasarkan TX-ID
+function deleteTransactionPermanently(txId) {
+  const sheet = getDbSpreadsheet().getSheetByName("Transactions");
+  if (!sheet) return false;
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === txId) {
+      sheet.deleteRow(i + 1); // +1 karena getRange 1-indexed, header di baris 1
+      // Bersihkan juga cache draft kalau masih ada
+      try {
+        const cache = CacheService.getUserCache();
+        cache.remove("DRAFT_" + txId);
+      } catch (e) {}
+      return true;
+    }
+  }
+  return false;
 }
 
 // /listuser — tampilkan semua user, job role, & status admin, khusus Admin
@@ -2294,34 +2422,32 @@ function toTitleCase(str) {
 
 function detectTransactionTypeAndCategory(text) {
   const tLower = (text || "").toLowerCase();
-  
-  const expenseKeywords = [
-    "bayar", "beli", "pembelian", "biaya", "ongkir", "sewa", "kredit", "pengeluaran",
-    "gaji", "upah", "honor", "lembur", "mandor", "kasbon", "tukang",
-    "semen", "pasir", "batu", "cat", "paku", "baut", "besi", "kayu", "pipa", "kabel", "keramik", "bata", "triplek", "material", "bahan",
-    "rental", "rent", "bor", "cangkul", "helm", "rompi", "mesin", "alat", "genset", "molen",
-    "kertas", "pena", "pulpen", "spidol", "materai", "print", "fotocopy", "buku", "atk", "tinta",
-    "bensin", "pertalite", "pertamax", "solar", "tol", "parkir", "makan", "minum", "konsumsi", "nasi", "ojek", "grab", "gojek", "travel", "tiket", "makanan"
+
+  // Kata kunci yang menandakan UANG MASUK secara eksplisit (topup, transfer masuk, dst)
+  const incomeKeywords = [
+    "uang masuk", "topup", "top up", "top-up", "reimburse", "terima transfer",
+    "kas masuk", "dana masuk", "transfer masuk", "tf masuk", "masuk kas", "terima kas"
   ];
 
-  let isExpense = false;
-  for (let kw of expenseKeywords) {
+  let isIncome = false;
+  for (let kw of incomeKeywords) {
     if (tLower.includes(kw)) {
-      isExpense = true;
+      isIncome = true;
       break;
     }
   }
 
-  // Jika tidak ada kata pengeluaran (bayar/beli/sewa/dll), maka DEFAULT ADALAH UANG MASUK (DEBIT)
-  if (!isExpense) {
+  // Kalau ada kata kunci uang masuk eksplisit -> Debit (Uang Masuk)
+  if (isIncome) {
     return { type: "Debit", category: "Uang Masuk / TopUp" };
   }
 
+  // DEFAULT: PENGELUARAN (Kredit) — karena mayoritas transaksi harian adalah belanja/nota
   let category = "Lain-Lain";
   const catRules = [
     { cat: "Akomodasi", keywords: ["kontrakan", "sewa rumah", "sewa mess", "bensin", "pertalite", "pertamax", "solar", "tol", "parkir", "makan", "minum", "konsumsi", "nasi", "ojek", "grab", "gojek", "travel", "tiket", "makanan"] },
     { cat: "Upah", keywords: ["tukang", "gaji", "upah", "honor", "lembur", "mandor", "kasbon"] },
-    { cat: "Material", keywords: ["semen", "pasir", "batu", "cat", "paku", "baut", "besi", "kayu", "pipa", "kabel", "keramik", "bata", "triplek", "material", "bahan"] },
+    { cat: "Material", keywords: ["semen", "pasir", "batu", "cat", "paku", "baut", "besi", "kayu", "pipa", "kabel", "keramik", "bata", "triplek", "material", "bahan", "benang", "colokan", "dinabolt", "kawat"] },
     { cat: "Alat", keywords: ["sewa alat", "rental", "rent", "bor", "cangkul", "helm", "rompi", "mesin", "genset", "molen"] },
     { cat: "ATK", keywords: ["kertas", "pena", "pulpen", "spidol", "materai", "print", "fotocopy", "buku", "atk", "tinta"] }
   ];
