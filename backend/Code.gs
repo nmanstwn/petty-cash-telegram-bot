@@ -66,7 +66,7 @@ function doGet(e) {
       txs.forEach(t => {
         t.date = toPlainDateString(t.date);
 
-        if (t.photoUrl && String(t.photoUrl).startsWith("http")) {
+        if (params.include_base64 === "true" && t.photoUrl && String(t.photoUrl).startsWith("http")) {
           const base64Img = fetchImageAsBase64(t.photoUrl);
           if (base64Img) {
             t.photoUrl = base64Img;
@@ -934,19 +934,22 @@ function cmdLaporan(chatId, userId, args) {
     `━━━━━━━━━━━━━━━━━━━━━━\n` +
     `📄 *Pilih opsi laporan di bawah ini:*`;
 
-  const inlineKeyboard = {
-    "inline_keyboard": [
-      [
-        { "text": "🌐 Buka Laporan Web & Print A4", "url": reportUrl }
-      ],
-      [
-        { "text": "📥 Unduh File PDF Langsung", "url": pdfUrl }
-      ]
-    ]
-  };
+  const keyboardRows = [];
+  if (webAppUrl && webAppUrl.startsWith("http")) {
+    keyboardRows.push([
+      { "text": "🌐 Buka Laporan Web & Print A4", "url": reportUrl }
+    ]);
+    keyboardRows.push([
+      { "text": "📥 Unduh File PDF Langsung", "url": pdfUrl }
+    ]);
+  }
 
   // 1. Kirim pesan ringkasan & tombol instan (< 0.1s)
-  sendMessageWithKeyboard(chatId, summaryMsg, inlineKeyboard);
+  if (keyboardRows.length > 0) {
+    sendMessageWithKeyboard(chatId, summaryMsg, { "inline_keyboard": keyboardRows });
+  } else {
+    sendMessage(chatId, summaryMsg);
+  }
 
   // 2. Coba kirimkan file PDF fisik secara langsung di Telegram
   try {
@@ -1995,7 +1998,8 @@ function sendMessageWithKeyboard(chatId, text, replyMarkup) {
       text: text,
       parse_mode: "Markdown",
       reply_markup: replyMarkup
-    })
+    }),
+    muteHttpExceptions: true
   });
 }
 
@@ -2012,7 +2016,8 @@ function editMessageText(chatId, messageId, text, replyMarkup) {
   UrlFetchApp.fetch(url, {
     method: "post",
     contentType: "application/json",
-    payload: JSON.stringify(payload)
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
   });
 }
 

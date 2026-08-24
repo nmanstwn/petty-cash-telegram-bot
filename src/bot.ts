@@ -138,51 +138,88 @@ function sendUnregisteredNotice(chatId: number, telegramId: number) {
 }
 
 // 2a. Command /rekap atau /laporan -> Laporan PETTY CASH SAJA
-bot.onText(/^\/(rekap|laporan)(@\w+)?(\s|$)/, async (msg) => {
+bot.onText(/^\/(rekap|laporan)(@\w+)?(\s|$)/i, async (msg) => {
   const chatId = msg.chat.id;
   const telegramId = msg.from?.id;
 
   if (!telegramId) return;
 
-  const role = await checkUserRole(telegramId);
+  bot.sendChatAction(chatId, "upload_document").catch(() => {});
+  const progressMsg = await bot.sendMessage(
+    chatId,
+    "⏳ <b>Sedang menyusun laporan PDF Petty Cash...</b>\n<i>Mohon tunggu beberapa saat.</i>",
+    { parse_mode: "HTML" }
+  ).catch(() => null);
 
-  if (!role) {
-    sendUnregisteredNotice(chatId, telegramId);
-    return;
+  try {
+    const role = await checkUserRole(telegramId);
+
+    if (!role) {
+      if (progressMsg) {
+        await bot.deleteMessage(chatId, progressMsg.message_id).catch(() => {});
+      }
+      sendUnregisteredNotice(chatId, telegramId);
+      return;
+    }
+
+    await sendPettyCashReport(chatId, telegramId, role, false, progressMsg ? progressMsg.message_id : null);
+  } catch (err: any) {
+    if (progressMsg) {
+      await bot.deleteMessage(chatId, progressMsg.message_id).catch(() => {});
+    }
+    bot.sendMessage(chatId, `❌ Gagal memproses rekap: ${err.message}`);
   }
-
-  await sendPettyCashReport(chatId, telegramId, role);
 });
 
 // 2b. Command /rekapgabungan -> Laporan GABUNGAN (Petty Cash + Kas Proyek), khusus Manajer/Admin
-bot.onText(/^\/rekapgabungan(@\w+)?(\s|$)/, async (msg) => {
+bot.onText(/^\/rekapgabungan(@\w+)?(\s|$)/i, async (msg) => {
   const chatId = msg.chat.id;
   const telegramId = msg.from?.id;
 
   if (!telegramId) return;
 
-  const role = await checkUserRole(telegramId);
+  bot.sendChatAction(chatId, "upload_document").catch(() => {});
+  const progressMsg = await bot.sendMessage(
+    chatId,
+    "⏳ <b>Sedang menyusun Laporan Gabungan (Petty Cash + Kas Proyek)...</b>\n<i>Mohon tunggu beberapa saat.</i>",
+    { parse_mode: "HTML" }
+  ).catch(() => null);
 
-  if (!role) {
-    sendUnregisteredNotice(chatId, telegramId);
-    return;
+  try {
+    const role = await checkUserRole(telegramId);
+
+    if (!role) {
+      if (progressMsg) {
+        await bot.deleteMessage(chatId, progressMsg.message_id).catch(() => {});
+      }
+      sendUnregisteredNotice(chatId, telegramId);
+      return;
+    }
+
+    if (role === "Pengawas") {
+      if (progressMsg) {
+        await bot.deleteMessage(chatId, progressMsg.message_id).catch(() => {});
+      }
+      bot.sendMessage(chatId,
+        `⛔ <b>Akses Ditolak.</b>\nLaporan Gabungan (Petty Cash + Kas Proyek) khusus untuk role <b>Manajer Proyek</b> / <b>Admin</b>.\nRole Anda saat ini: <b>${role}</b>\n\n💡 Gunakan <code>/rekap</code> untuk laporan Petty Cash Anda.`,
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
+    await sendPettyCashReport(chatId, telegramId, role, /* includeKasProyek */ true, progressMsg ? progressMsg.message_id : null);
+  } catch (err: any) {
+    if (progressMsg) {
+      await bot.deleteMessage(chatId, progressMsg.message_id).catch(() => {});
+    }
+    bot.sendMessage(chatId, `❌ Gagal memproses rekap gabungan: ${err.message}`);
   }
-
-  if (role === "Pengawas") {
-    bot.sendMessage(chatId,
-      `⛔ <b>Akses Ditolak.</b>\nLaporan Gabungan (Petty Cash + Kas Proyek) khusus untuk role <b>Manajer Proyek</b> / <b>Admin</b>.\nRole Anda saat ini: <b>${role}</b>\n\n💡 Gunakan <code>/rekap</code> untuk laporan Petty Cash Anda.`,
-      { parse_mode: "HTML" }
-    );
-    return;
-  }
-
-  await sendPettyCashReport(chatId, telegramId, role, /* includeKasProyek */ true);
 });
 
 async function getUserActiveProjectFromScript(telegramId: number | string): Promise<string> {
   try {
     const url = `${APPS_SCRIPT_WEBHOOK_URL}?action=get_active_project&telegram_id=${telegramId}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return "Proyek Utama";
     const json: any = await res.json();
     return json && json.activeProject ? json.activeProject : "Proyek Utama";
@@ -193,8 +230,16 @@ async function getUserActiveProjectFromScript(telegramId: number | string): Prom
 }
 
 // Fungsi inti pembuat & pengirim laporan, dipakai oleh kedua command di atas
-async function sendPettyCashReport(chatId: number, telegramId: number, role: string, includeKasProyek: boolean = false) {
+async function sendPettyCashReport(
+  chatId: number,
+  telegramId: number,
+  role: string,
+  includeKasProyek: boolean = false,
+  progressMsgId: number | null = null
+) {
   try {
+    bot.sendChatAction(chatId, "upload_document").catch(() => {});
+
     let transactions: Transaction[] = [];
     let projectName = await getUserActiveProjectFromScript(telegramId);
     let periodLabel = "Semua Riwayat";
@@ -203,7 +248,7 @@ async function sendPettyCashReport(chatId: number, telegramId: number, role: str
       const jsonUrl = `${APPS_SCRIPT_WEBHOOK_URL}?action=json_data&project=${encodeURIComponent(projectName)}`;
       console.log("🔍 Fetching transactions from:", jsonUrl);
 
-      const res = await fetch(jsonUrl);
+      const res = await fetch(jsonUrl, { signal: AbortSignal.timeout(60000) });
       const rawText = await res.text();
 
       if (res.ok && !rawText.trim().startsWith("<!doctype") && !rawText.trim().startsWith("<html")) {
@@ -215,9 +260,9 @@ async function sendPettyCashReport(chatId: number, telegramId: number, role: str
             description: t.merchant || t.description || ""
           }));
 
-          // Kalau role Pengawas & laporan Petty Cash saja -> filter HANYA transaksi milik dirinya sendiri
-          if (role === "Pengawas") {
-            transactions = transactions.filter((t: any) => String(t.userId) === String(telegramId));
+          // Kalau laporan Petty Cash saja -> ambil seluruh transaksi Petty Cash proyek
+          if (!includeKasProyek) {
+            transactions = transactions.filter((t: any) => t.jobRole !== "Manajer");
           }
 
           if (includeKasProyek && json.topups) {
@@ -229,10 +274,24 @@ async function sendPettyCashReport(chatId: number, telegramId: number, role: str
         if (json.projectName) projectName = json.projectName;
         if (json.period) periodLabel = json.period;
       } else {
-        console.error("❌ json_data fetch gagal atau mengembalikan HTML");
+        console.error("❌ json_data fetch gagal atau mengembalikan HTML:", rawText.slice(0, 200));
+        throw new Error("Gagal mengambil data dari Google Sheet (respon server tidak valid / timeout).");
       }
-    } catch (err) {
-      console.error("❌ Error fetch json_data:", err);
+    } catch (err: any) {
+      console.error("❌ Error fetch json_data:", err.message);
+      throw err;
+    }
+
+    if (transactions.length === 0) {
+      if (progressMsgId) {
+        bot.deleteMessage(chatId, progressMsgId).catch(() => {});
+      }
+      bot.sendMessage(
+        chatId,
+        `ℹ️ <b>Belum ada data transaksi yang tercatat untuk proyek:</b>\n🏗️ <b>${projectName}</b>\n\n💡 <i>Silakan catat transaksi baru terlebih dahulu sebelum mengunduh rekap.</i>`,
+        { parse_mode: "HTML" }
+      );
+      return;
     }
 
     let totalDebit = 0;
@@ -265,6 +324,7 @@ async function sendPettyCashReport(chatId: number, telegramId: number, role: str
       transactions: transactions
     };
 
+    bot.sendChatAction(chatId, "upload_document").catch(() => {});
     const pdfBuffer = await generatePDFBuffer(reportData);
     const safeProj = projectName.replace(/[^a-zA-Z0-9_-]/g, "_");
     const safeType = includeKasProyek ? "Gabungan" : "PettyCash";
@@ -278,15 +338,22 @@ async function sendPettyCashReport(chatId: number, telegramId: number, role: str
       contentType: "application/pdf"
     });
 
+    if (progressMsgId) {
+      bot.deleteMessage(chatId, progressMsgId).catch(() => {});
+    }
+
   } catch (err: any) {
     console.error("Error generating PDF in bot:", err);
+    if (progressMsgId) {
+      bot.deleteMessage(chatId, progressMsgId).catch(() => {});
+    }
     bot.sendMessage(chatId, `❌ Gagal membuat laporan PDF: ${err.message}`);
   }
 }
 
 // Command yang DITANGANI LANGSUNG oleh bot.ts (butuh pdfkit / Node.js)
 // Selain pola ini, semua update diteruskan mentah-mentah ke Kode.gs.
-const OWNED_BY_NODE = /^\/(start|help|rekapgabungan|rekap|laporan)(@\w+)?(\s|$)/;
+const OWNED_BY_NODE = /^\/(start|help|rekapgabungan|rekap|laporan)(@\w+)?(\s|$)/i;
 
 // Setup HTTP Server untuk Health Check Render.com & Webhook Receiver
 const server = http.createServer((req, res) => {
