@@ -202,7 +202,14 @@ function handleMessage(message) {
       case "/laporan":
       case "/rekap":
       case "/rekapmingguan":
-        cmdLaporan(chatId, userId, args);
+        cmdLaporan(chatId, userId, args, false); // false = Petty Cash saja
+        break;
+      case "/rekapgabungan":
+        if (getUserJobRole(userId) === JOB_PENGAWAS && !isAdmin(userId)) {
+          sendMessage(chatId, "⛔ *Akses Ditolak.* Laporan Gabungan khusus untuk role *Manajer Proyek* / *Admin*.");
+        } else {
+          cmdLaporan(chatId, userId, args, true); // true = Gabungan
+        }
         break;
       case "/catat":
         handleTextDraftMessage(userId, chatId, userName, args.join(" "));
@@ -895,36 +902,23 @@ function cmdTopUp(chatId, userId, args) {
   sendMessage(chatId, text);
 }
 
-// /laporan -> INSTANT REKAP SUMMARY & DIRECT PDF FILE IN TELEGRAM
-function cmdLaporan(chatId, userId, args) {
+function cmdLaporan(chatId, userId, args, isGabungan = false) {
   const projName = getUserActiveProject(userId) || "Proyek Utama";
   
-  let periodLabel = "30 Hari Terakhir";
-  const today = new Date();
-  const startDate = new Date(today);
-  startDate.setDate(today.getDate() - 30);
-
+  let periodLabel = "Semua Riwayat";
   if (args && args.length > 0) {
     const argStr = args.join(" ").toLowerCase();
     if (argStr.includes("minggu") || argStr.includes("7")) {
       periodLabel = "7 Hari Terakhir";
-      startDate.setDate(today.getDate() - 7);
-    } else if (argStr.includes("semua") || argStr.includes("all")) {
-      periodLabel = "Semua Riwayat";
-      startDate.setTime(0);
+    } else if (argStr.includes("bulan") || argStr.includes("30")) {
+      periodLabel = "30 Hari Terakhir";
     }
   }
 
   const bal = getProjectBalance(projName);
-  let webAppUrl = ScriptApp.getService().getUrl();
-  if (!webAppUrl || webAppUrl.length === 0) {
-    webAppUrl = getProperty("WEB_APP_URL") || "";
-  }
+  const tipeLaporan = isGabungan ? "GABUNGAN (Petty Cash + Kas Proyek)" : "PETTY CASH";
 
-  const reportUrl = `${webAppUrl}?action=report&project=${encodeURIComponent(projName)}`;
-  const pdfUrl = `${webAppUrl}?action=pdf&project=${encodeURIComponent(projName)}`;
-
-  const summaryMsg = `📊 *LAPORAN KEUANGAN PETTY CASH*\n` +
+  const summaryMsg = `📊 *RINGKASAN KEUANGAN ${tipeLaporan}*\n` +
     `━━━━━━━━━━━━━━━━━━━━━━\n` +
     `🏗️ *Proyek:* ${projName}\n` +
     `📅 *Periode:* ${periodLabel}\n\n` +
@@ -932,33 +926,34 @@ function cmdLaporan(chatId, userId, args) {
     `💸 *Total Pengeluaran:* Rp ${formatRupiah(bal.totalExpense)}\n` +
     `💰 *Saldo Terkini Proyek:* Rp ${formatRupiah(bal.remaining)}\n` +
     `━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `📄 *Pilih opsi laporan di bawah ini:*`;
+    `⏳ *Memproses File PDF...*\n_Sistem sedang merender dokumen PDF Anda. Jika server cloud sedang tidur (cold start), proses ini mungkin membutuhkan waktu 30-60 detik._`;
 
-  const keyboardRows = [];
-  if (webAppUrl && webAppUrl.startsWith("http")) {
-    keyboardRows.push([
-      { "text": "🌐 Buka Laporan Web & Print A4", "url": reportUrl }
-    ]);
-    keyboardRows.push([
-      { "text": "📥 Unduh File PDF Langsung", "url": pdfUrl }
-    ]);
+  // 1. Kirim pesan ringkasan teks seketika
+  sendMessage(chatId, summaryMsg);
+
+  // 2. Delegasikan pembuatan PDF fisik ke Render (Node.js)
+  const renderUrl = getProperty("RENDER_PDF_API_URL"); 
+  const secretKey = getProperty("RENDER_SECRET_KEY") || "PETTYCASH_SECRET_DEFAULT";
+
+  if (!renderUrl) {
+    sendMessage(chatId, "⚠️ *Peringatan:* RENDER_PDF_API_URL belum diatur di Script Properties. Gagal mencetak PDF.");
+    return;
   }
 
-  // 1. Kirim pesan ringkasan & tombol instan (< 0.1s)
-  if (keyboardRows.length > 0) {
-    sendMessageWithKeyboard(chatId, summaryMsg, { "inline_keyboard": keyboardRows });
-  } else {
-    sendMessage(chatId, summaryMsg);
-  }
-
-  // 2. Coba kirimkan file PDF fisik secara langsung di Telegram
   try {
-    const pdfBlob = generatePettyCashPDFReport(projName, periodLabel, startDate, today);
-    const safeProj = projName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const fileName = `Laporan_PettyCash_${safeProj}_${getTodayDate()}.pdf`;
-    sendDocument(chatId, pdfBlob, fileName, `📄 File PDF Laporan Keuangan (${projName})`);
+    UrlFetchApp.fetch(renderUrl, {
+      method: "post",
+      contentType: "application/json",
+      headers: { "Authorization": "Bearer " + secretKey },
+      payload: JSON.stringify({
+        chatId: chatId,
+        telegramId: userId,
+        includeKasProyek: isGabungan
+      }),
+      muteHttpExceptions: true
+    });
   } catch (err) {
-    Logger.log("Direct PDF attach error: " + err.toString());
+    sendMessage(chatId, "❌ Gagal memanggil worker PDF: " + err.message);
   }
 }
 
