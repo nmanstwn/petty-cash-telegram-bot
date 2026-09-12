@@ -772,7 +772,6 @@ function cmdSaldo(chatId, userId, args) {
     `📥 *Total Top-Up:* Rp ${formatRupiah(bal.totalTopup)}\n` +
     `📤 *Total Pengeluaran (Approved):* Rp ${formatRupiah(bal.totalExpense)}\n` +
     `📊 *SALDO BERJALAN:* Rp ${formatRupiah(bal.remaining)}\n` +
-    `⚠️ *Ambang Saldo Min:* Rp ${formatRupiah(bal.minThreshold)}\n` +
     `━━━━━━━━━━━━━━━━━━━━━━`;
   sendMessage(chatId, text);
 }
