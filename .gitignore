@@ -1,4 +1,19 @@
+# Dependensi & Build
 node_modules/
-.env
-*.pdf
 dist/
+
+# Kredensial & Rahasia (PENTING AGAR TIDAK BOCOR KE GITHUB)
+.env
+*.env
+*.env.local
+
+# File PDF & Laporan Keuangan Nyata
+*.pdf
+
+# Dokumentasi Internal & Source Code Dump
+ARCHITECTURE.md
+RINGKASAN_PROYEK.md
+SOURCE_CODE.md
+
+# File Scratch & Eksperimen Lokal
+scratch/
