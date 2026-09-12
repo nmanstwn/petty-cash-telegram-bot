@@ -1313,12 +1313,33 @@ function saveTransactionDraft(tx) {
   ]);
 }
 
-// Helper tunggal penentu alur penyimpanan akhir transaksi berdasarkan JobRole pencatat
+// Helper tunggal penentu alur penyimpanan akhir transaksi berdasarkan JobRole pencatat (Optimasi Batch Write)
 function saveFinalTransaction(tx, newStatus, approvedBy, rejectReason) {
   const currentJobRole = getUserJobRole(tx.userId) || tx.jobRole || JOB_PENGAWAS;
   tx.jobRole = currentJobRole;
-  updateTransactionField(tx.id, "JobRole", currentJobRole);
-  updateTransactionStatus(tx.id, newStatus, approvedBy, rejectReason);
+
+  // Update Cache
+  const cached = getCachedDraft(tx.id) || tx;
+  cached.jobRole = currentJobRole;
+  cached.status = newStatus;
+  setCachedDraft(tx.id, cached);
+
+  const sheet = getDbSpreadsheet().getSheetByName("Transactions");
+  if (!sheet) return;
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === tx.id) {
+      const rowIndex = i + 1;
+      sheet.getRange(rowIndex, 5).setValue(currentJobRole); // Column E: JobRole
+      sheet.getRange(rowIndex, 13, 1, 3).setValues([[
+        newStatus,
+        approvedBy || "",
+        rejectReason || ""
+      ]]); // Batch update Column M, N, O: Status, ApprovedBy, RejectReason
+      break;
+    }
+  }
 }
 
 function updateTransactionStatus(txId, newStatus, approvedBy, rejectReason) {
@@ -1333,9 +1354,11 @@ function updateTransactionStatus(txId, newStatus, approvedBy, rejectReason) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === txId) {
-      sheet.getRange(i + 1, 13).setValue(newStatus); // Column M: Status
-      if (approvedBy) sheet.getRange(i + 1, 14).setValue(approvedBy); // Column N: ApprovedBy
-      if (rejectReason) sheet.getRange(i + 1, 15).setValue(rejectReason); // Column O: RejectReason
+      sheet.getRange(i + 1, 13, 1, 3).setValues([[
+        newStatus,
+        approvedBy || "",
+        rejectReason || ""
+      ]]); // Batch update Column M, N, O: Status, ApprovedBy, RejectReason
       break;
     }
   }

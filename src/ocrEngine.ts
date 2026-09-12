@@ -49,9 +49,13 @@ export function parseIndonesianReceiptText(text: string): OCRResult {
   }
 
   if (amount === 0) {
-    const numberMatches = text.match(/\b\d{1,3}(?:\.\d{3})+(?:,\d{2})?\b/g);
+    // Regex diubah untuk menangkap angka berformat titik pemisah ATAU angka murni minimal 4 digit
+    const numberMatches = text.match(/\b\d{1,3}(?:\.\d{3})+(?:,\d{2})?\b|\b\d{4,}\b/g);
     if (numberMatches && numberMatches.length > 0) {
-      const numbers = numberMatches.map(n => parseFloat(n.replace(/\./g, "").replace(",", "."))).filter(n => n > 100);
+      const numbers = numberMatches
+        .map(n => parseFloat(n.replace(/\./g, "").replace(",", ".")))
+        .filter(n => n > 100);
+
       if (numbers.length > 0) {
         amount = Math.max(...numbers);
       }

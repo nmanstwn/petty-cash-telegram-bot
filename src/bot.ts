@@ -33,17 +33,35 @@ function getMonthYearLabel(): string {
   return `${months[now.getMonth()]} ${now.getFullYear()}`;
 }
 
-async function checkUserRole(telegramId: number | string): Promise<string | null> {
+// Helper terpusat untuk komunikasi dengan REST API Apps Script (Clean Code & DRY)
+async function fetchAppsScriptAPI<T>(
+  action: string,
+  params: Record<string, string | number> = {},
+  timeoutMs: number = 15000
+): Promise<T | null> {
   try {
-    const url = `${APPS_SCRIPT_WEBHOOK_URL}?action=check_role&telegram_id=${telegramId}`;
-    const res = await fetch(url);
+    const url = new URL(APPS_SCRIPT_WEBHOOK_URL);
+    url.searchParams.append("action", action);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.append(key, String(value));
+    }
+
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
-    const json: any = await res.json();
-    return json && json.role ? json.role : null;
+
+    const text = await res.text();
+    if (text.startsWith("<!doctype") || text.startsWith("<html")) return null; // Handle GAS redirect/error pages
+
+    return JSON.parse(text) as T;
   } catch (err) {
-    console.error("❌ Error checking role:", err);
+    console.error(`❌ API Error [${action}]:`, err);
     return null;
   }
+}
+
+async function checkUserRole(telegramId: number | string): Promise<string | null> {
+  const data = await fetchAppsScriptAPI<{ role?: string }>("check_role", { telegram_id: telegramId });
+  return data?.role || null;
 }
 
 function mapTopUpsToTransactions(topups: any[]): Transaction[] {
@@ -66,9 +84,10 @@ function sortTransactionsByDate(txs: Transaction[]): Transaction[] {
   });
 }
 
-// 1. Command /start & /help
-bot.onText(/\/(start|help)/, (msg) => {
+// 1. Command /start & /help (Strict Anchor RegExp)
+bot.onText(/^\/(start|help)(?:@\w+)?(?:\s|$)/i, (msg) => {
   const chatId = msg.chat.id;
+  const userName = msg.from?.first_name || "User";
   const helpText = `
 🤖 <b>SISTEM PETTY CASH AUTOMATION</b>
 ──────────────────────────────
@@ -217,16 +236,8 @@ bot.onText(/^\/rekapgabungan(@\w+)?(\s|$)/i, async (msg) => {
 });
 
 async function getUserActiveProjectFromScript(telegramId: number | string): Promise<string> {
-  try {
-    const url = `${APPS_SCRIPT_WEBHOOK_URL}?action=get_active_project&telegram_id=${telegramId}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return "Proyek Utama";
-    const json: any = await res.json();
-    return json && json.activeProject ? json.activeProject : "Proyek Utama";
-  } catch (err) {
-    console.error("❌ Error fetching active project:", err);
-    return "Proyek Utama";
-  }
+  const data = await fetchAppsScriptAPI<{ activeProject?: string }>("get_active_project", { telegram_id: telegramId });
+  return data?.activeProject || "Proyek Utama";
 }
 
 // Fungsi inti pembuat & pengirim laporan, dipakai oleh kedua command di atas
@@ -245,36 +256,33 @@ async function sendPettyCashReport(
     let periodLabel = "Semua Riwayat";
 
     try {
-      const jsonUrl = `${APPS_SCRIPT_WEBHOOK_URL}?action=json_data&project=${encodeURIComponent(projectName)}`;
-      console.log("🔍 Fetching transactions from:", jsonUrl);
+      console.log("🔍 Fetching transactions for project:", projectName);
+      const json = await fetchAppsScriptAPI<{
+        projectName?: string;
+        period?: string;
+        transactions?: any[];
+        topups?: any[];
+      }>("json_data", { project: projectName }, 60000);
 
-      const res = await fetch(jsonUrl, { signal: AbortSignal.timeout(60000) });
-      const rawText = await res.text();
+      if (json && json.transactions && Array.isArray(json.transactions)) {
+        transactions = json.transactions.map((t: any) => ({
+          ...t,
+          description: t.merchant || t.description || ""
+        }));
 
-      if (res.ok && !rawText.trim().startsWith("<!doctype") && !rawText.trim().startsWith("<html")) {
-        const json: any = JSON.parse(rawText);
+        // Kalau laporan Petty Cash saja -> ambil seluruh transaksi Petty Cash proyek
+        if (!includeKasProyek) {
+          transactions = transactions.filter((t: any) => t.jobRole !== "Manajer");
+        }
 
-        if (json && json.transactions && Array.isArray(json.transactions)) {
-          transactions = json.transactions.map((t: any) => ({
-            ...t,
-            description: t.merchant || t.description || ""
-          }));
-
-          // Kalau laporan Petty Cash saja -> ambil seluruh transaksi Petty Cash proyek
-          if (!includeKasProyek) {
-            transactions = transactions.filter((t: any) => t.jobRole !== "Manajer");
-          }
-
-          if (includeKasProyek && json.topups) {
-            const topupTx = mapTopUpsToTransactions(json.topups);
-            transactions = sortTransactionsByDate(transactions.concat(topupTx));
-          }
+        if (includeKasProyek && json.topups) {
+          const topupTx = mapTopUpsToTransactions(json.topups);
+          transactions = sortTransactionsByDate(transactions.concat(topupTx));
         }
 
         if (json.projectName) projectName = json.projectName;
         if (json.period) periodLabel = json.period;
       } else {
-        console.error("❌ json_data fetch gagal atau mengembalikan HTML:", rawText.slice(0, 200));
         throw new Error("Gagal mengambil data dari Google Sheet (respon server tidak valid / timeout).");
       }
     } catch (err: any) {
